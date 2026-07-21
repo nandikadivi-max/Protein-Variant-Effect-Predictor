@@ -202,7 +202,19 @@ build at all.
   the worker or the DSSP tests locally. The worker Docker image already has
   it (Debian `dssp` → mkdssp 4.4.10). Note: `brew install dssp` pulls in a
   Homebrew `python@3.14` — don't let it shadow the venv's `python3` on PATH.
-- AlphaMissense / ClinVar annotation lookups — Phase 4d, next
+- ~~ClinVar annotation lookups~~ **DONE (Phase 4d):** `VariantAnnotation` on
+  the results contract, populated from the EBI Proteins variation API
+  (clinical significance aggregated from ClinVar/Ensembl/UniProt/NCI-TCGA +
+  associated diseases + SIFT/PolyPhen). Best-effort per single mutation.
+  Verified TP53 R175H → Pathogenic.
+- **AlphaMissense: NOT wired (deliberate).** No free per-variant REST API
+  exposes AlphaMissense (checked ProtVar and the EBI variation API — only
+  SIFT/PolyPhen predictors are available). It ships as a ~1GB bulk TSV
+  (`AlphaMissense_aa_substitutions.tsv.gz`, keyed by uniprot_id + change).
+  Wiring it means: download the dataset, preprocess into per-UniProt extracts
+  or a tabix/SQLite index (a full-file scan per query is too slow), and add
+  an `AlphaMissenseProvider` feeding the already-generic `VariantPrediction`.
+  Flagged as a follow-up, not built.
 - Frontend — nothing beyond `package.json` and `tailwind.config.ts` scaffolding
 - ProteinGym benchmark harness
 - Score label calibration (currently hardcoded placeholder thresholds
