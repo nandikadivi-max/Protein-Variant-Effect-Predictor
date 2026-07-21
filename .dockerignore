@@ -1,0 +1,23 @@
+# Keep the build context small and reproducible. Without this, the whole
+# .venv (gigabytes of torch) and .git history get shipped to the daemon.
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.git/
+.gitignore
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local dev artifacts — never bake these into an image.
+.env
+data/
+frontend/node_modules/
+frontend/.next/
+
+# Docs / OS cruft
+.DS_Store
+CLAUDE.md
+README.md
