@@ -73,7 +73,11 @@ def get_job_service(
 
 
 def get_results_service(session: AsyncSession = Depends(get_db)) -> ResultsService:
-    return ResultsService(session=session, matrix_store=get_matrix_store())
+    # No network client needed here: results only *read* stored features.
+    structures = StructureService(session=session, store=get_structure_store())
+    return ResultsService(
+        session=session, matrix_store=get_matrix_store(), structures=structures
+    )
 
 
 async def get_structure_service(

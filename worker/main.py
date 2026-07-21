@@ -79,11 +79,58 @@ async def score_job(ctx: dict, *, job_id: str, sequence_hash: str, model_id: str
             await session.commit()
 
             await jobs.mark_done(job_id)
-            return {"sequence_hash": sequence_hash, "model_id": model_id, "uri": uri}
 
         except Exception as exc:  # noqa: BLE001
             await jobs.mark_error(job_id, error_message=repr(exc))
             raise
+
+    # Best-effort structural features (DSSP). Runs after the job is already
+    # marked done and in its own session, so a structure/DSSP hiccup can never
+    # fail or delay the score the user is waiting on.
+    try:
+        await compute_and_store_structure_features(sequence_hash)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[features] skipped for {sequence_hash}: {exc!r}")
+
+    return {"sequence_hash": sequence_hash, "model_id": model_id, "uri": uri}
+
+
+async def compute_and_store_structure_features(sequence_hash: str) -> None:
+    """
+    Fetch the protein's structure (AlphaFold or RCSB), run DSSP, and store the
+    resulting StructureContext in UniProt coordinates. Idempotent and skipped
+    for FASTA-only proteins that have no structure.
+    """
+    from api.services.structure_client import StructureClient
+    from api.services.structure_service import StructureService
+    from storage.structure_store import get_structure_store
+    from worker.features.dssp import compute_structure_context
+
+    async with async_session_factory() as session:
+        client = StructureClient()
+        try:
+            structures = StructureService(session, get_structure_store(), client)
+            if structures.load_features(sequence_hash) is not None:
+                return  # already computed
+            record = await structures.get_or_fetch(sequence_hash)
+            if record is None:
+                return  # FASTA-only / no structure available
+
+            protein = await session.execute(
+                select(Protein).where(Protein.sequence_hash == sequence_hash)
+            )
+            length = protein.scalar_one().length
+
+            pdb_bytes = structures.store.read(record.structure_uri)
+            segments = (
+                await structures.load_sifts_segments(sequence_hash)
+                if record.provider == "rcsb"
+                else None
+            )
+            context = compute_structure_context(pdb_bytes, length, segments)
+            structures.store_features(sequence_hash, context)
+        finally:
+            await client.aclose()
 
 
 class WorkerSettings:

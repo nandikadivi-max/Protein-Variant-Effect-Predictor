@@ -14,6 +14,7 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.services.structure_service import StructureService
 from contracts.schemas import EffectLabel, ScoreResult, SingleScore
 from db.models import Protein, ScoreMatrix
 from domain.derive import (
@@ -48,9 +49,17 @@ class _LoadedMatrix:
 
 
 class ResultsService:
-    def __init__(self, session: AsyncSession, matrix_store: MatrixStore) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        matrix_store: MatrixStore,
+        structures: StructureService | None = None,
+    ) -> None:
         self.session = session
         self.matrix_store = matrix_store
+        # Optional: when present, the response carries DSSP structural context
+        # (secondary structure / RSA / buried) if the worker has computed it.
+        self.structures = structures
 
     async def _load(self, sequence_hash: str, model_id: str) -> _LoadedMatrix | None:
         result = await self.session.execute(
@@ -85,6 +94,10 @@ class ResultsService:
         effect_map = full_effect_map(loaded.matrix, loaded.sequence)
         impact = per_residue_impact(loaded.matrix, loaded.sequence, reduce="mean")
 
+        structure = (
+            self.structures.load_features(sequence_hash) if self.structures else None
+        )
+
         return ScoreResult(
             sequence_hash=sequence_hash,
             model_id=model_id,
@@ -92,4 +105,5 @@ class ResultsService:
             single=single,
             effect_map=effect_map.tolist(),
             per_residue_impact=impact.tolist(),
+            structure=structure,
         )

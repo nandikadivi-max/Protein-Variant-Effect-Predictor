@@ -17,6 +17,7 @@ Provider selection in v1:
   - protein is FASTA-only     -> no structure available (returns None)
 """
 
+import json
 from dataclasses import dataclass
 
 from sqlalchemy import select, update
@@ -25,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.services.sifts_client import SiftsMapping
 from api.services.structure_client import StructureClient, StructureNotFound
+from contracts.schemas import StructureContext
 from db.models import Protein, Structure
 from storage.structure_store import StructureStore
 
@@ -43,11 +45,19 @@ class StructureService:
         self,
         session: AsyncSession,
         store: StructureStore,
-        client: StructureClient,
+        client: StructureClient | None = None,
     ) -> None:
         self.session = session
         self.store = store
+        # Only the fetch paths (get_or_fetch, RCSB lazy fetch) need the network
+        # client. Reading stored features/sifts works with just the store, so
+        # the API's results path can construct this without a client.
         self.client = client
+
+    def _require_client(self) -> StructureClient:
+        if self.client is None:
+            raise RuntimeError("This StructureService has no network client")
+        return self.client
 
     async def get_or_fetch(self, sequence_hash: str) -> StructureRecord | None:
         """
@@ -73,7 +83,9 @@ class StructureService:
         if not protein.uniprot_id:
             return None
         try:
-            data, source_url = await self.client.fetch_alphafold(protein.uniprot_id)
+            data, source_url = await self._require_client().fetch_alphafold(
+                protein.uniprot_id
+            )
         except StructureNotFound:
             return None
 
@@ -111,7 +123,7 @@ class StructureService:
 
     async def _fetch_rcsb_into(self, row: Structure) -> StructureRecord | None:
         try:
-            data, source_url = await self.client.fetch_rcsb(row.pdb_id)
+            data, source_url = await self._require_client().fetch_rcsb(row.pdb_id)
         except StructureNotFound:
             return None
         uri = self.store.write(row.sequence_hash, "pdb", data)
@@ -135,6 +147,28 @@ class StructureService:
         if record is None:
             return None
         return self.store.read(record.structure_uri), record.fmt
+
+    # --- DSSP structural features (computed in the worker, read anywhere) ---
+
+    def store_features(self, sequence_hash: str, context: StructureContext) -> str:
+        """Persist a computed StructureContext as JSON. Returns its URI."""
+        return self.store.write(
+            sequence_hash, "dssp.json", context.model_dump_json().encode("utf-8")
+        )
+
+    def load_features(self, sequence_hash: str) -> StructureContext | None:
+        """Read a previously computed StructureContext, or None if absent."""
+        uri = self.store.build_uri(sequence_hash, "dssp.json")
+        if not self.store.exists(uri):
+            return None
+        return StructureContext.model_validate_json(self.store.read(uri))
+
+    async def load_sifts_segments(self, sequence_hash: str) -> list[dict] | None:
+        """Load the stored SIFTS segments (author->UniProt map) for a protein."""
+        row = await self._load_row(sequence_hash)
+        if row is None or not row.sifts_map_uri:
+            return None
+        return json.loads(self.store.read(row.sifts_map_uri))["segments"]
 
     async def _load_row(self, sequence_hash: str) -> Structure | None:
         result = await self.session.execute(
