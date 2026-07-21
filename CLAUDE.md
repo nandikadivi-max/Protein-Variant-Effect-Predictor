@@ -215,7 +215,15 @@ build at all.
   or a tabix/SQLite index (a full-file scan per query is too slow), and add
   an `AlphaMissenseProvider` feeding the already-generic `VariantPrediction`.
   Flagged as a follow-up, not built.
-- Frontend — nothing beyond `package.json` and `tailwind.config.ts` scaffolding
+- Frontend (Phase 5) — **5a DONE:** Next.js 14 app (App Router) with the full
+  resolve→job→poll→results flow, a typed API client, and a canvas L×20 effect
+  heatmap (diverging scale, WT markers, hover readout, mutation highlight +
+  auto-scroll), plus the single-score + ClinVar annotation panel. Verified
+  in-browser (TP53 R175H); production build passes. Run: `cd frontend && nvm
+  use 20 && npm run dev` (needs the API on :8000). **Remaining:** 5b Mol* 3D
+  viewer with per-residue/SIFTS coloring, 5c DSSP secondary-structure track,
+  5d design polish/responsive/animations. Node pinned to 20 via nvm (system
+  node is 25 — must `nvm use 20` for frontend commands).
 - ProteinGym benchmark harness
 - Score label calibration (currently hardcoded placeholder thresholds
   in `api/services/results_service.py`: `DAMAGING_LLR_THRESHOLD = -3.0`,
