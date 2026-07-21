@@ -59,8 +59,11 @@ class Structure(Base):
     sequence_hash: Mapped[str] = mapped_column(
         String(64), ForeignKey("proteins.sequence_hash"), primary_key=True
     )
-    structure_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    # Nullable: a PDB-sourced row is recorded at resolve time (with pdb_id +
+    # sifts_map_uri) but its file is fetched from RCSB lazily on first view.
+    structure_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider: Mapped[str] = mapped_column(String(16), nullable=False)  # "alphafold" | "rcsb"
+    pdb_id: Mapped[str | None] = mapped_column(String(8), nullable=True)  # set when provider=rcsb
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)  # upstream provenance
     sifts_map_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

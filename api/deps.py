@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.services.job_service import JobService
 from api.services.protein_resolver import ProteinResolver
 from api.services.results_service import ResultsService
+from api.services.sifts_client import SiftsClient
 from api.services.structure_client import StructureClient
 from api.services.structure_service import StructureService
 from api.services.uniprot_client import UniProtClient
@@ -46,11 +47,22 @@ async def get_uniprot() -> AsyncIterator[UniProtClient]:
         await client.aclose()
 
 
-def get_resolver(
+async def get_resolver(
     session: AsyncSession = Depends(get_db),
     uniprot: UniProtClient = Depends(get_uniprot),
-) -> ProteinResolver:
-    return ProteinResolver(session=session, uniprot=uniprot)
+) -> AsyncIterator[ProteinResolver]:
+    sifts = SiftsClient()
+    struct_client = StructureClient()
+    try:
+        structures = StructureService(
+            session=session, store=get_structure_store(), client=struct_client
+        )
+        yield ProteinResolver(
+            session=session, uniprot=uniprot, sifts=sifts, structures=structures
+        )
+    finally:
+        await sifts.aclose()
+        await struct_client.aclose()
 
 
 def get_job_service(

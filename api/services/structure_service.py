@@ -8,17 +8,22 @@ table keyed by sequence_hash. Every later request (viewer, DSSP) reads the
 stored copy.
 
 Provider selection in v1:
-  - protein has a uniprot_id  -> AlphaFold predicted model
+  - PDB-sourced protein       -> RCSB experimental structure. Recorded at
+                                 resolve time via record_pdb_intent(); the
+                                 file is fetched from RCSB lazily on first
+                                 view. This takes precedence — if a
+                                 structures row already exists, we honour it.
+  - protein has a uniprot_id  -> AlphaFold predicted model (lazy)
   - protein is FASTA-only     -> no structure available (returns None)
-  - PDB-sourced proteins      -> RCSB (wired in 4b alongside SIFTS mapping)
 """
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.services.sifts_client import SiftsMapping
 from api.services.structure_client import StructureClient, StructureNotFound
 from db.models import Protein, Structure
 from storage.structure_store import StructureStore
@@ -52,30 +57,74 @@ class StructureService:
         """
         existing = await self._load_row(sequence_hash)
         if existing is not None:
-            return self._to_record(existing)
+            if existing.structure_uri:
+                return self._to_record(existing)
+            # A recorded-but-not-yet-fetched PDB intent: download it now.
+            if existing.provider == "rcsb" and existing.pdb_id:
+                return await self._fetch_rcsb_into(existing)
+            return None
 
         protein = await self._load_protein(sequence_hash)
         if protein is None:
             return None
 
-        # Fetch from the appropriate provider. Only AlphaFold (UniProt) is
-        # wired in 4a; RCSB/PDB lands in 4b.
-        if protein.uniprot_id:
-            try:
-                data, source_url = await self.client.fetch_alphafold(protein.uniprot_id)
-            except StructureNotFound:
-                return None
-            provider = "alphafold"
-        else:
+        # No structures row and no PDB intent: fall back to AlphaFold if the
+        # protein carries a UniProt identity, else there's nothing to show.
+        if not protein.uniprot_id:
+            return None
+        try:
+            data, source_url = await self.client.fetch_alphafold(protein.uniprot_id)
+        except StructureNotFound:
             return None
 
-        fmt = "pdb"
-        uri = self.store.write(sequence_hash, fmt, data)
-        await self._upsert_row(sequence_hash, provider, uri, source_url)
+        uri = self.store.write(sequence_hash, "pdb", data)
+        await self._upsert_row(sequence_hash, "alphafold", uri, source_url)
         return StructureRecord(
             sequence_hash=sequence_hash,
-            provider=provider,
-            fmt=fmt,
+            provider="alphafold",
+            fmt="pdb",
+            source_url=source_url,
+            structure_uri=uri,
+        )
+
+    async def record_pdb_intent(self, sequence_hash: str, mapping: SiftsMapping) -> None:
+        """
+        Record that this protein's structure is a specific RCSB PDB entry,
+        persisting its SIFTS UniProt-numbering map. Called at resolve time
+        for PDB inputs. Idempotent; the RCSB file is fetched later, lazily.
+        """
+        sifts_uri = self.store.write(
+            sequence_hash, "sifts.json", mapping.to_json().encode("utf-8")
+        )
+        stmt = (
+            pg_insert(Structure)
+            .values(
+                sequence_hash=sequence_hash,
+                provider="rcsb",
+                pdb_id=mapping.pdb_id,
+                sifts_map_uri=sifts_uri,
+            )
+            .on_conflict_do_nothing(index_elements=["sequence_hash"])
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+
+    async def _fetch_rcsb_into(self, row: Structure) -> StructureRecord | None:
+        try:
+            data, source_url = await self.client.fetch_rcsb(row.pdb_id)
+        except StructureNotFound:
+            return None
+        uri = self.store.write(row.sequence_hash, "pdb", data)
+        await self.session.execute(
+            update(Structure)
+            .where(Structure.sequence_hash == row.sequence_hash)
+            .values(structure_uri=uri, source_url=source_url)
+        )
+        await self.session.commit()
+        return StructureRecord(
+            sequence_hash=row.sequence_hash,
+            provider="rcsb",
+            fmt="pdb",
             source_url=source_url,
             structure_uri=uri,
         )
