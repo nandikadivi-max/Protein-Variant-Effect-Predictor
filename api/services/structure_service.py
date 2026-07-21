@@ -108,15 +108,27 @@ class StructureService:
         sifts_uri = self.store.write(
             sequence_hash, "sifts.json", mapping.to_json().encode("utf-8")
         )
-        stmt = (
-            pg_insert(Structure)
-            .values(
-                sequence_hash=sequence_hash,
-                provider="rcsb",
-                pdb_id=mapping.pdb_id,
-                sifts_map_uri=sifts_uri,
-            )
-            .on_conflict_do_nothing(index_elements=["sequence_hash"])
+        stmt = pg_insert(Structure).values(
+            sequence_hash=sequence_hash,
+            provider="rcsb",
+            pdb_id=mapping.pdb_id,
+            sifts_map_uri=sifts_uri,
+        )
+        # Experimental beats predicted: if a row already exists it's left alone,
+        # UNLESS it's a predicted AlphaFold model — a PDB input is an explicit
+        # request for the real experimental structure, so we replace it and
+        # reset structure_uri/source_url to trigger a fresh RCSB fetch. An
+        # existing rcsb row is kept (the WHERE fails), keeping this idempotent.
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["sequence_hash"],
+            set_={
+                "provider": stmt.excluded.provider,
+                "pdb_id": stmt.excluded.pdb_id,
+                "sifts_map_uri": stmt.excluded.sifts_map_uri,
+                "structure_uri": None,
+                "source_url": None,
+            },
+            where=(Structure.provider == "alphafold"),
         )
         await self.session.execute(stmt)
         await self.session.commit()
