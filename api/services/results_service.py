@@ -14,6 +14,7 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.services.annotation_service import AnnotationService
 from api.services.structure_service import StructureService
 from contracts.schemas import EffectLabel, ScoreResult, SingleScore
 from db.models import Protein, ScoreMatrix
@@ -46,6 +47,7 @@ class _LoadedMatrix:
     matrix: np.ndarray
     sequence: str
     model_id: str
+    uniprot_id: str | None
 
 
 class ResultsService:
@@ -54,12 +56,16 @@ class ResultsService:
         session: AsyncSession,
         matrix_store: MatrixStore,
         structures: StructureService | None = None,
+        annotations: AnnotationService | None = None,
     ) -> None:
         self.session = session
         self.matrix_store = matrix_store
         # Optional: when present, the response carries DSSP structural context
         # (secondary structure / RSA / buried) if the worker has computed it.
         self.structures = structures
+        # Optional: external variant annotations (ClinVar/Ensembl clinical
+        # significance + SIFT/PolyPhen) for the single mutation, when known.
+        self.annotations = annotations
 
     async def _load(self, sequence_hash: str, model_id: str) -> _LoadedMatrix | None:
         result = await self.session.execute(
@@ -75,7 +81,12 @@ class ResultsService:
             return None
         score_matrix_row, protein_row = row
         matrix = self.matrix_store.read(score_matrix_row.matrix_uri)
-        return _LoadedMatrix(matrix=matrix, sequence=protein_row.sequence, model_id=model_id)
+        return _LoadedMatrix(
+            matrix=matrix,
+            sequence=protein_row.sequence,
+            model_id=model_id,
+            uniprot_id=protein_row.uniprot_id,
+        )
 
     async def build_result(
         self, sequence_hash: str, model_id: str, mutation: str | None = None
@@ -85,11 +96,22 @@ class ResultsService:
             return None
 
         single: SingleScore | None = None
+        annotation = None
         if mutation:
             variant = Variant.parse(mutation)
             validate_against_sequence(variant, loaded.sequence)
             llr = score_variant(loaded.matrix, variant)
             single = SingleScore(mutation=str(variant), llr=llr, label=classify_llr(llr))
+
+            # External variant annotation (best-effort). Never fail the result
+            # over an annotation lookup, and skip it for FASTA-only proteins.
+            if self.annotations and loaded.uniprot_id:
+                try:
+                    annotation = await self.annotations.annotate(
+                        loaded.uniprot_id, variant
+                    )
+                except Exception:  # noqa: BLE001
+                    annotation = None
 
         effect_map = full_effect_map(loaded.matrix, loaded.sequence)
         impact = per_residue_impact(loaded.matrix, loaded.sequence, reduce="mean")
@@ -106,4 +128,5 @@ class ResultsService:
             effect_map=effect_map.tolist(),
             per_residue_impact=impact.tolist(),
             structure=structure,
+            annotation=annotation,
         )

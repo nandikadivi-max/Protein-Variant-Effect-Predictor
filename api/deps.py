@@ -11,6 +11,8 @@ from arq.connections import RedisSettings
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.services.annotation_client import AnnotationClient
+from api.services.annotation_service import AnnotationService
 from api.services.job_service import JobService
 from api.services.protein_resolver import ProteinResolver
 from api.services.results_service import ResultsService
@@ -72,12 +74,22 @@ def get_job_service(
     return JobService(session=session, arq=arq)
 
 
-def get_results_service(session: AsyncSession = Depends(get_db)) -> ResultsService:
-    # No network client needed here: results only *read* stored features.
+async def get_results_service(
+    session: AsyncSession = Depends(get_db),
+) -> AsyncIterator[ResultsService]:
+    # Structure features are read from the store (no client). Annotations do
+    # hit the EBI Proteins API, so that client needs closing.
     structures = StructureService(session=session, store=get_structure_store())
-    return ResultsService(
-        session=session, matrix_store=get_matrix_store(), structures=structures
-    )
+    annotation_client = AnnotationClient()
+    try:
+        yield ResultsService(
+            session=session,
+            matrix_store=get_matrix_store(),
+            structures=structures,
+            annotations=AnnotationService(annotation_client),
+        )
+    finally:
+        await annotation_client.aclose()
 
 
 async def get_structure_service(

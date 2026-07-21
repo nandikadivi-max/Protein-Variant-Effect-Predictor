@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     alphafold_api_base: str = "https://alphafold.ebi.ac.uk/api"
     rcsb_api_base: str = "https://data.rcsb.org/rest/v1"
     rcsb_files_base: str = "https://files.rcsb.org/download"
+    # EBI Proteins API — per-protein variant annotations (clinical significance
+    # aggregated from ClinVar/Ensembl/UniProt/NCI-TCGA, plus SIFT/PolyPhen).
+    proteins_api_base: str = "https://www.ebi.ac.uk/proteins/api"
     http_timeout_seconds: float = 30.0
 
     # --- Model ---

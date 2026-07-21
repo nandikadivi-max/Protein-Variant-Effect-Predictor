@@ -83,6 +83,26 @@ class Confidence(BaseModel):
     method: str
 
 
+class VariantPrediction(BaseModel):
+    """A third-party predictor's call for a variant (SIFT, PolyPhen, ...)."""
+    algorithm: str                 # "SIFT" | "PolyPhen" | (future) "AlphaMissense"
+    prediction: str | None = None  # e.g. "deleterious" | "benign"
+    score: float | None = None
+
+
+class VariantAnnotation(BaseModel):
+    """
+    External knowledge about a specific mutation, sourced from the EBI
+    Proteins variation API (ClinVar/Ensembl/UniProt/NCI-TCGA). Distinct from
+    our own ESM-2 score in `single` — this is what other databases *say*.
+    """
+    mutation: str
+    clinical_significance: str | None = None   # "Pathogenic" | "Benign" | "Uncertain" | ...
+    sources: list[str] = []                    # ["ClinVar", "Ensembl", ...]
+    diseases: list[str] = []                   # associated disease/trait names
+    predictions: list[VariantPrediction] = []
+
+
 class ScoreResult(BaseModel):
     sequence_hash: str
     model_id: str
@@ -91,4 +111,5 @@ class ScoreResult(BaseModel):
     effect_map: list[list[float]]       # L x 20, columns in AA_ORDER
     per_residue_impact: list[float]     # L
     structure: StructureContext | None = None
+    annotation: VariantAnnotation | None = None
     confidence: Confidence | None = None
