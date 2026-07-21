@@ -1,0 +1,39 @@
+# Worker image — carries torch + transformers + model weights.
+# Boots slowly (model load) but rarely restarts. Keep min-instances >= 1
+# in production so the model stays warm and mutation queries stay fast.
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    dssp \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install the heavy ML deps in their own layer first so they stay cached
+# across source changes (torch alone is ~2GB). Versions mirror the
+# [worker] extra in pyproject.toml — the editable install below is a
+# near-no-op for these once they're already satisfied.
+RUN pip install --no-cache-dir \
+    "torch>=2.4.0" \
+    "transformers>=4.45.0" \
+    "accelerate>=0.34.0"
+
+# Source must be present before the editable install: setuptools discovers
+# packages from the copied tree at build time (see pyproject find/include).
+COPY pyproject.toml .
+COPY contracts/ ./contracts/
+COPY domain/ ./domain/
+COPY db/ ./db/
+COPY storage/ ./storage/
+COPY config.py .
+# The worker imports JobService from api/services — copy the services
+# subtree only, not the routes/main. Nothing torch-related leaks into
+# the API image because api/ can be imported without api/main.
+COPY api/__init__.py ./api/__init__.py
+COPY api/services/ ./api/services/
+COPY worker/ ./worker/
+
+RUN pip install --no-cache-dir -e ".[worker]"
+
+CMD ["arq", "worker.main.WorkerSettings"]

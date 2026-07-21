@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: protein
+      POSTGRES_PASSWORD: protein_dev_password
+      POSTGRES_DB: protein_variant_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U protein"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://protein:protein_dev_password@postgres:5432/protein_variant_db
+      REDIS_URL: redis://redis:6379
+      MATRIX_STORAGE_BACKEND: local
+      MATRIX_STORAGE_PATH: /data/matrices
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./api:/app/api
+      - ./domain:/app/domain
+      - ./contracts:/app/contracts
+      - ./db:/app/db
+      - ./storage:/app/storage
+      - ./config.py:/app/config.py
+      - matrix_data:/data
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://protein:protein_dev_password@postgres:5432/protein_variant_db
+      REDIS_URL: redis://redis:6379
+      MATRIX_STORAGE_BACKEND: local
+      MATRIX_STORAGE_PATH: /data/matrices
+      MODEL_CACHE_DIR: /model_cache
+      HF_HOME: /model_cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./worker:/app/worker
+      - ./domain:/app/domain
+      - ./contracts:/app/contracts
+      - ./db:/app/db
+      - ./storage:/app/storage
+      - ./config.py:/app/config.py
+      - ./api/__init__.py:/app/api/__init__.py
+      - ./api/services:/app/api/services
+      - model_cache:/model_cache        # persist downloaded HF weights
+      - matrix_data:/data               # shared with api so both see matrices
+
+volumes:
+  postgres_data:
+  model_cache:
+  matrix_data:
