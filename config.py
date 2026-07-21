@@ -34,14 +34,22 @@ class Settings(BaseSettings):
     # --- Matrix storage ---
     # "local" = filesystem under matrix_storage_path (dev/testing).
     # "gcs"   = Google Cloud Storage bucket (production).
+    # The structure store shares this same backend + bucket selection; only
+    # the local filesystem path differs (structures are raw .pdb/.cif files,
+    # not numpy arrays, so they live under their own directory).
     matrix_storage_backend: str = Field(default="local")
     matrix_storage_path: Path = Field(default=Path("./data/matrices"))
     matrix_storage_bucket: str | None = Field(default=None)
+    structure_storage_path: Path = Field(default=Path("./data/structures"))
 
     # --- External APIs ---
     uniprot_api_base: str = "https://rest.uniprot.org"
-    alphafold_db_base: str = "https://alphafold.ebi.ac.uk/files"
+    # AlphaFold bumps its model version periodically (v4 -> v6 -> ...), so we
+    # resolve the real file URL through the prediction API rather than
+    # hardcoding a version into the path.
+    alphafold_api_base: str = "https://alphafold.ebi.ac.uk/api"
     rcsb_api_base: str = "https://data.rcsb.org/rest/v1"
+    rcsb_files_base: str = "https://files.rcsb.org/download"
     http_timeout_seconds: float = 30.0
 
     # --- Model ---

@@ -14,10 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.services.job_service import JobService
 from api.services.protein_resolver import ProteinResolver
 from api.services.results_service import ResultsService
+from api.services.structure_client import StructureClient
+from api.services.structure_service import StructureService
 from api.services.uniprot_client import UniProtClient
 from config import get_settings
 from db.session import async_session_factory
 from storage.matrix_store import get_matrix_store
+from storage.structure_store import get_structure_store
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
@@ -59,3 +62,15 @@ def get_job_service(
 
 def get_results_service(session: AsyncSession = Depends(get_db)) -> ResultsService:
     return ResultsService(session=session, matrix_store=get_matrix_store())
+
+
+async def get_structure_service(
+    session: AsyncSession = Depends(get_db),
+) -> AsyncIterator[StructureService]:
+    client = StructureClient()
+    try:
+        yield StructureService(
+            session=session, store=get_structure_store(), client=client
+        )
+    finally:
+        await client.aclose()

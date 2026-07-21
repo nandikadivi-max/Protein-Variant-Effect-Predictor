@@ -62,6 +62,15 @@ class SingleScore(BaseModel):
     label: EffectLabel
 
 
+class StructureInfo(BaseModel):
+    """Metadata for a fetched 3D structure file (served to the Mol* viewer)."""
+    sequence_hash: str
+    provider: str        # "alphafold" | "rcsb"
+    format: str          # "pdb"
+    source_url: str      # upstream provenance (AlphaFold DB / RCSB)
+    file_url: str        # our endpoint that streams the raw bytes
+
+
 class StructureContext(BaseModel):
     secondary_structure: list[str]  # per-residue, "H" | "E" | "C"
     relative_sasa: list[float]      # per-residue, 0-1

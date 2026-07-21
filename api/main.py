@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.deps import create_arq_pool
-from api.routes import jobs, proteins, results
+from api.routes import jobs, proteins, results, structures
 
 
 @asynccontextmanager
@@ -44,3 +44,4 @@ async def health() -> dict[str, str]:
 app.include_router(proteins.router, prefix="/api/v1", tags=["proteins"])
 app.include_router(jobs.router, prefix="/api/v1", tags=["jobs"])
 app.include_router(results.router, prefix="/api/v1", tags=["results"])
+app.include_router(structures.router, prefix="/api/v1", tags=["structures"])
