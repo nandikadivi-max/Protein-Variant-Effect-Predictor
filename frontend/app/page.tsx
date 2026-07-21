@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { EffectHeatmap } from "@/components/EffectHeatmap";
 import { PredictionForm } from "@/components/PredictionForm";
 import { SingleScoreCard } from "@/components/SingleScoreCard";
+import { StructureTrack } from "@/components/StructureTrack";
 import { structureFileUrl } from "@/lib/api";
 import { usePrediction } from "@/lib/usePrediction";
 
@@ -77,6 +78,9 @@ export default function Home() {
             />
           )}
           <EffectHeatmap effectMap={p.result.effect_map} highlight={highlight} />
+          {p.result.structure && (
+            <StructureTrack structure={p.result.structure} />
+          )}
         </div>
       )}
     </main>
