@@ -11,11 +11,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install the heavy ML deps in their own layer first so they stay cached
-# across source changes (torch alone is ~2GB). Versions mirror the
-# [worker] extra in pyproject.toml — the editable install below is a
-# near-no-op for these once they're already satisfied.
-RUN pip install --no-cache-dir \
+# across source changes. Versions mirror the [worker] extra in pyproject.toml
+# — the editable install below is a near-no-op for these once satisfied.
+#
+# torch comes from PyTorch's CPU-only index: the default linux wheel bundles
+# ~2GB of CUDA/cuDNN libraries that a Cloud Run CPU instance never touches.
+# The +cpu build drops the worker image from ~9GB to ~2-3GB (faster cold
+# starts, cheaper storage). Inference runs on CPU in production anyway.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
     "torch>=2.4.0" \
+    && pip install --no-cache-dir \
     "transformers>=4.45.0" \
     "accelerate>=0.34.0"
 
