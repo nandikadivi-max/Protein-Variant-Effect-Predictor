@@ -182,11 +182,16 @@ build at all.
   updates job status. **Never actually run** — needs the full stack up.
 
 ### What's explicitly NOT built yet
+- ~~AlphaFold/RCSB structure fetching~~ **DONE (Phase 4a):** StructureStore,
+  StructureClient (AlphaFold via prediction API + RCSB), StructureService,
+  and `GET /structures/{hash}` + `/file` endpoints. Verified end to end.
 - PDB ID resolution (`ProteinResolver._resolve` raises `NotImplementedError`
-  for `pdb_id` classification — deferred to the structure pipeline phase)
-- DSSP structural features (secondary structure, RSA, contact maps)
-- AlphaFold/RCSB structure fetching
-- AlphaMissense / ClinVar annotation lookups
+  for `pdb_id` classification — **Phase 4b, next**, ships with the SIFTS
+  UniProt-numbering map)
+- DSSP structural features (secondary structure, RSA, contact maps) —
+  Phase 4c; runs in the worker (has the `dssp` binary) and populates the
+  already-defined `StructureContext` contract
+- AlphaMissense / ClinVar annotation lookups — Phase 4d
 - Frontend — nothing beyond `package.json` and `tailwind.config.ts` scaffolding
 - ProteinGym benchmark harness
 - Score label calibration (currently hardcoded placeholder thresholds
