@@ -185,9 +185,11 @@ build at all.
 - ~~AlphaFold/RCSB structure fetching~~ **DONE (Phase 4a):** StructureStore,
   StructureClient (AlphaFold via prediction API + RCSB), StructureService,
   and `GET /structures/{hash}` + `/file` endpoints. Verified end to end.
-- PDB ID resolution (`ProteinResolver._resolve` raises `NotImplementedError`
-  for `pdb_id` classification — **Phase 4b, next**, ships with the SIFTS
-  UniProt-numbering map)
+- ~~PDB ID resolution~~ **DONE (Phase 4b):** the `pdb_id` path maps a PDB
+  entry to its UniProt entry via PDBe SIFTS, scores in UniProt coordinates,
+  and records the experimental RCSB structure + SIFTS residue map (fetched
+  lazily). `SiftsClient`, resolver `pdb_id` branch, migration 0003. Verified
+  1CRN → P01542 end to end.
 - DSSP structural features (secondary structure, RSA, contact maps) —
   Phase 4c; runs in the worker (has the `dssp` binary) and populates the
   already-defined `StructureContext` contract
