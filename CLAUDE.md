@@ -190,10 +190,19 @@ build at all.
   and records the experimental RCSB structure + SIFTS residue map (fetched
   lazily). `SiftsClient`, resolver `pdb_id` branch, migration 0003. Verified
   1CRN → P01542 end to end.
-- DSSP structural features (secondary structure, RSA, contact maps) —
-  Phase 4c; runs in the worker (has the `dssp` binary) and populates the
-  already-defined `StructureContext` contract
-- AlphaMissense / ClinVar annotation lookups — Phase 4d
+- ~~DSSP structural features~~ **DONE (Phase 4c):** `worker/features/dssp.py`
+  computes 3-state secondary structure + relative SASA + buried flags,
+  projected onto UniProt coordinates (identity for AlphaFold, SIFTS-remapped
+  for RCSB). Computed best-effort in the worker after scoring, stored as
+  JSON, surfaced on `ScoreResult.structure`. (Contact maps NOT done — the
+  `StructureContext` contract doesn't include them; deferred.)
+  **Local dev gotcha:** the `dssp` binary is no longer in homebrew-core.
+  Install with `brew install brewsci/bio/dssp` (provides `mkdssp` 4.x at
+  `/opt/homebrew/bin/mkdssp`). Add `/opt/homebrew/bin` to PATH when running
+  the worker or the DSSP tests locally. The worker Docker image already has
+  it (Debian `dssp` → mkdssp 4.4.10). Note: `brew install dssp` pulls in a
+  Homebrew `python@3.14` — don't let it shadow the venv's `python3` on PATH.
+- AlphaMissense / ClinVar annotation lookups — Phase 4d, next
 - Frontend — nothing beyond `package.json` and `tailwind.config.ts` scaffolding
 - ProteinGym benchmark harness
 - Score label calibration (currently hardcoded placeholder thresholds
