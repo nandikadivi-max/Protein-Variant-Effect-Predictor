@@ -1,9 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { EffectHeatmap } from "@/components/EffectHeatmap";
 import { PredictionForm } from "@/components/PredictionForm";
 import { SingleScoreCard } from "@/components/SingleScoreCard";
+import { structureFileUrl } from "@/lib/api";
 import { usePrediction } from "@/lib/usePrediction";
+
+// Mol* is client-only (WebGL, no SSR).
+const StructureViewer = dynamic(
+  () => import("@/components/StructureViewer").then((m) => m.StructureViewer),
+  { ssr: false },
+);
 
 const PHASE_TEXT: Record<string, string> = {
   resolving: "Resolving protein…",
@@ -61,6 +69,12 @@ export default function Home() {
           <ResolvedMeta result={p.result} source={p.resolved?.source} />
           {single && (
             <SingleScoreCard single={single} annotation={p.result.annotation} />
+          )}
+          {p.resolved?.has_structure && (
+            <StructureViewer
+              fileUrl={structureFileUrl(p.result.sequence_hash)}
+              perResidueImpact={p.result.per_residue_impact}
+            />
           )}
           <EffectHeatmap effectMap={p.result.effect_map} highlight={highlight} />
         </div>
