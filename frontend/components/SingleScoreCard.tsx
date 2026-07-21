@@ -68,8 +68,42 @@ export function SingleScoreCard({ single, annotation }: Props) {
               ))}
             </div>
           )}
+
+          {annotation.predictions.length > 0 && (
+            <div className="mt-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted">
+                Predictors
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {annotation.predictions.map((p) => (
+                  <span
+                    key={p.algorithm}
+                    className="rounded-md border border-border px-2.5 py-1 text-xs"
+                  >
+                    <span className="text-muted">{p.algorithm}</span>{" "}
+                    <span
+                      className="font-medium"
+                      style={{ color: predColor(p.prediction) }}
+                    >
+                      {p.prediction ?? "—"}
+                    </span>
+                    {p.score != null && (
+                      <span className="text-muted"> ({p.score.toFixed(2)})</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+function predColor(prediction: string | null): string {
+  const v = (prediction ?? "").toLowerCase();
+  if (/patho|deleter|damag/.test(v)) return "#B91C1C";
+  if (/benign|toler/.test(v)) return "#1D4ED8";
+  return "#57534E";
 }
