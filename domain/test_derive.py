@@ -10,7 +10,7 @@ from domain.derive import (
     score_variant,
     validate_against_sequence,
 )
-from domain.scoring import AA_INDEX, AA_ORDER
+from domain.scoring import AA_INDEX
 
 
 def make_fake_matrix(length: int, seed: int = 0) -> np.ndarray:

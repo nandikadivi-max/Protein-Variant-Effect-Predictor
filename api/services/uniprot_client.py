@@ -55,7 +55,7 @@ class UniProtClient:
         search_query = " AND ".join(parts)
 
         url = f"{self._settings.uniprot_api_base}/uniprotkb/search"
-        params = {"query": search_query, "format": "json", "size": 1, "fields": "accession"}
+        params = {"query": search_query, "format": "json", "size": "1", "fields": "accession"}
         response = await self._client.get(url, params=params)
         response.raise_for_status()
 

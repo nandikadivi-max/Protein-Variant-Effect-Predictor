@@ -134,6 +134,7 @@ class StructureService:
         await self.session.commit()
 
     async def _fetch_rcsb_into(self, row: Structure) -> StructureRecord | None:
+        assert row.pdb_id is not None, "rcsb row must carry a pdb_id to fetch"
         try:
             data, source_url = await self._require_client().fetch_rcsb(row.pdb_id)
         except StructureNotFound:
@@ -212,11 +213,15 @@ class StructureService:
 
     @staticmethod
     def _to_record(row: Structure) -> StructureRecord:
-        fmt = row.structure_uri.rsplit(".", 1)[-1] if "." in row.structure_uri else "pdb"
+        # Callers only reach here once the file has been fetched, so
+        # structure_uri is set (it's nullable at the DB level for pending rows).
+        uri = row.structure_uri
+        assert uri is not None, "_to_record requires a fetched structure_uri"
+        fmt = uri.rsplit(".", 1)[-1] if "." in uri else "pdb"
         return StructureRecord(
             sequence_hash=row.sequence_hash,
             provider=row.provider,
             fmt=fmt,
             source_url=row.source_url or "",
-            structure_uri=row.structure_uri,
+            structure_uri=uri,
         )

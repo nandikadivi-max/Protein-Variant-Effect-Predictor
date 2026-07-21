@@ -92,7 +92,7 @@ class SiftsClient:
             if covered > best_coverage:
                 best_acc, best_data, best_coverage = accession, data, covered
 
-        if best_acc is None:
+        if best_acc is None or best_data is None:
             raise SiftsNotFound(f"PDB {pdb_id} has no UniProt mapping")
 
         segments = tuple(

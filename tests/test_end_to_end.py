@@ -19,8 +19,6 @@ We use a small protein (ubiquitin, ~76 residues) to keep this test to a
 few seconds even on CPU. TP53 (~393 residues) would take too long.
 """
 
-import asyncio
-import contextlib
 
 import pytest
 
@@ -37,7 +35,7 @@ from api.services.protein_resolver import ProteinResolver
 from api.services.results_service import ResultsService
 from api.services.uniprot_client import UniProtClient
 from contracts.schemas import JobStatus
-from db.models import Protein, ScoreMatrix
+from db.models import ScoreMatrix
 from db.session import async_session_factory
 from storage.matrix_store import get_matrix_store
 from worker.scorers.esm2 import DEFAULT_REVISION, ESM2Scorer

@@ -38,6 +38,12 @@ dev = [
 line-length = 100
 target-version = "py311"
 
+[tool.ruff.lint.per-file-ignores]
+# Test modules legitimately import after a pytest.importorskip / skip guard
+# (torch, asyncpg, dssp) so the import doesn't blow up when the dep is absent.
+"**/test_*.py" = ["E402"]
+"tests/*.py" = ["E402"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["domain", "contracts", "db", "storage", "api", "worker", "benchmark", "tests"]
