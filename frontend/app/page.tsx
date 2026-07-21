@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import { EffectHeatmap } from "@/components/EffectHeatmap";
 import { PredictionForm } from "@/components/PredictionForm";
@@ -67,23 +68,63 @@ export default function Home() {
 
       {p.result && (
         <div className="mt-8 space-y-6">
-          <ResolvedMeta result={p.result} source={p.resolved?.source} />
+          <Reveal>
+            <ResolvedMeta result={p.result} source={p.resolved?.source} />
+          </Reveal>
           {single && (
-            <SingleScoreCard single={single} annotation={p.result.annotation} />
+            <Reveal delay={0.05}>
+              <SingleScoreCard
+                single={single}
+                annotation={p.result.annotation}
+              />
+            </Reveal>
           )}
           {p.resolved?.has_structure && (
-            <StructureViewer
-              fileUrl={structureFileUrl(p.result.sequence_hash)}
-              perResidueImpact={p.result.per_residue_impact}
-            />
+            <Reveal delay={0.1}>
+              <StructureViewer
+                fileUrl={structureFileUrl(p.result.sequence_hash)}
+                perResidueImpact={p.result.per_residue_impact}
+              />
+            </Reveal>
           )}
-          <EffectHeatmap effectMap={p.result.effect_map} highlight={highlight} />
+          <Reveal delay={0.15}>
+            <EffectHeatmap
+              effectMap={p.result.effect_map}
+              highlight={highlight}
+            />
+          </Reveal>
           {p.result.structure && (
-            <StructureTrack structure={p.result.structure} />
+            <Reveal delay={0.2}>
+              <StructureTrack structure={p.result.structure} />
+            </Reveal>
           )}
         </div>
       )}
+
+      <footer className="mt-16 border-t border-border pt-6 text-xs text-muted">
+        ESM-2 (650M) zero-shot scores · AlphaFold / RCSB structures · DSSP ·
+        clinical annotations from the EBI Proteins API. Research tool — not for
+        clinical use.
+      </footer>
     </main>
+  );
+}
+
+function Reveal({
+  children,
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay, ease: "easeOut" }}
+    >
+      {children}
+    </motion.div>
   );
 }
 
