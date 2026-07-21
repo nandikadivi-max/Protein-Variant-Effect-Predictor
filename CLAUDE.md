@@ -223,8 +223,11 @@ build at all.
   (`components/StructureViewer.tsx`, client-only + lazy-loaded) with a custom
   color theme (`lib/impactColorTheme.ts`) painting residues by per-residue
   impact — verified (TP53 DBD core red, tails pale). Run: `cd frontend && nvm
-  use 20 && npm run dev` (needs the API on :8000). **Remaining:** 5c DSSP
-  secondary-structure track + annotation caching, 5d polish/responsive.
+  use 20 && npm run dev` (needs the API on :8000). **5c DONE:** DSSP
+  secondary-structure/buried track (`components/StructureTrack.tsx`) + a
+  module-level per-UniProt annotation cache in `annotation_client.py` (repeat
+  result lookups skip the multi-second EBI fetch). **5d DONE:** Framer Motion
+  staggered result reveal + footer. **Phase 5 (frontend) is COMPLETE.**
   Node pinned to 20 via nvm (system node is 25 — must `nvm use 20`).
   **Gotcha:** never run `next build` while `next dev` is running — it
   corrupts the dev server's `.next` (missing-chunk errors, broken hydration).
