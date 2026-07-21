@@ -7,6 +7,7 @@ None (each catalogued variant is a single residue change). FASTA-only
 proteins have no UniProt identity and so no annotation.
 """
 
+from api.services.alphamissense_provider import AlphaMissenseProvider
 from contracts.schemas import VariantAnnotation, VariantPrediction
 from domain.derive import Variant
 
@@ -23,8 +24,11 @@ _SIGNIFICANCE_RANK = {
 
 
 class AnnotationService:
-    def __init__(self, client) -> None:
+    def __init__(
+        self, client, alphamissense: AlphaMissenseProvider | None = None
+    ) -> None:
         self.client = client
+        self.alphamissense = alphamissense
 
     async def annotate(
         self, uniprot_id: str, variant: Variant
@@ -32,6 +36,23 @@ class AnnotationService:
         if len(variant.substitutions) != 1:
             return None
         sub = variant.substitutions[0]
+        mutation = str(variant)
+
+        predictions: list[VariantPrediction] = []
+
+        # AlphaMissense (local dataset, optional). Covers every possible
+        # substitution, so it may have a call even when the clinical
+        # databases below don't.
+        if self.alphamissense is not None:
+            am = self.alphamissense.lookup(uniprot_id, mutation)
+            if am is not None:
+                predictions.append(
+                    VariantPrediction(
+                        algorithm="AlphaMissense",
+                        prediction=am.classification,
+                        score=am.score,
+                    )
+                )
 
         features = await self.client.fetch_variants(uniprot_id)
         matches = [
@@ -41,13 +62,12 @@ class AnnotationService:
             and f.get("wildType") == sub.wt
             and f.get("alternativeSequence") == sub.mut
         ]
-        if not matches:
+        if not matches and not predictions:
             return None
 
         sources: set[str] = set()
         diseases: list[str] = []
         seen_disease: set[str] = set()
-        predictions: list[VariantPrediction] = []
         significances: list[str] = []
 
         for f in matches:
@@ -70,7 +90,7 @@ class AnnotationService:
                 )
 
         return VariantAnnotation(
-            mutation=str(variant),
+            mutation=mutation,
             clinical_significance=self._pick_significance(significances),
             sources=sorted(sources),
             diseases=diseases[:10],

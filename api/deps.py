@@ -11,6 +11,7 @@ from arq.connections import RedisSettings
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.services.alphamissense_provider import AlphaMissenseProvider
 from api.services.annotation_client import AnnotationClient
 from api.services.annotation_service import AnnotationService
 from api.services.job_service import JobService
@@ -86,7 +87,9 @@ async def get_results_service(
             session=session,
             matrix_store=get_matrix_store(),
             structures=structures,
-            annotations=AnnotationService(annotation_client),
+            annotations=AnnotationService(
+                annotation_client, alphamissense=AlphaMissenseProvider()
+            ),
         )
     finally:
         await annotation_client.aclose()

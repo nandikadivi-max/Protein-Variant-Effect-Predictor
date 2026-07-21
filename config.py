@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     proteins_api_base: str = "https://www.ebi.ac.uk/proteins/api"
     http_timeout_seconds: float = 30.0
 
+    # --- AlphaMissense ---
+    # Optional local SQLite built from the bulk aa-substitutions dataset (see
+    # scripts/build_alphamissense_db.py). When present, missense predictions are
+    # added to annotations; when absent, AlphaMissense is silently skipped.
+    alphamissense_db_path: Path = Field(default=Path("./data/alphamissense.sqlite"))
+
     # --- Model ---
     default_model_id: str = "esm2_t33_650M_UR50D"
 
