@@ -207,14 +207,18 @@ build at all.
   (clinical significance aggregated from ClinVar/Ensembl/UniProt/NCI-TCGA +
   associated diseases + SIFT/PolyPhen). Best-effort per single mutation.
   Verified TP53 R175H → Pathogenic.
-- **AlphaMissense: NOT wired (deliberate).** No free per-variant REST API
-  exposes AlphaMissense (checked ProtVar and the EBI variation API — only
-  SIFT/PolyPhen predictors are available). It ships as a ~1GB bulk TSV
-  (`AlphaMissense_aa_substitutions.tsv.gz`, keyed by uniprot_id + change).
-  Wiring it means: download the dataset, preprocess into per-UniProt extracts
-  or a tabix/SQLite index (a full-file scan per query is too slow), and add
-  an `AlphaMissenseProvider` feeding the already-generic `VariantPrediction`.
-  Flagged as a follow-up, not built.
+- ~~AlphaMissense: NOT wired~~ **DONE:** no free per-variant REST API exposes
+  AlphaMissense, so it's served from the bulk dataset locally.
+  `scripts/build_alphamissense_db.py` streams the ~1.2GB
+  `AlphaMissense_aa_substitutions.tsv.gz` (sorted by uniprot_id) once into a
+  compact SQLite (`data/alphamissense.sqlite`, ~1.16GB, 20,516 proteins /
+  216M rows): one row per protein, uniprot_id → gzipped block of its
+  substitutions. `api/services/alphamissense_provider.py` reads it read-only
+  and degrades gracefully when absent (dataset is optional + gitignored).
+  Wired into AnnotationService as a `VariantPrediction`; can annotate on
+  AlphaMissense alone. Verified: TP53 R175H → pathogenic 0.9857, P72R →
+  benign 0.07. **Setup on a fresh machine:** `curl` the dataset to `data/`,
+  then `python scripts/build_alphamissense_db.py --input … --output …`.
 - Frontend (Phase 5) — **5a DONE:** Next.js 14 app (App Router) with the full
   resolve→job→poll→results flow, a typed API client, and a canvas L×20 effect
   heatmap (diverging scale, WT markers, hover readout, mutation highlight +
