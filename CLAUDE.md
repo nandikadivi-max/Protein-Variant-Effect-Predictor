@@ -239,11 +239,18 @@ build at all.
   AlphaFold coloring maps residue→UniProt directly; RCSB-cropped structures
   would need SIFTS-aware coloring (uses label_seq_id today — fine for
   AlphaFold + identity-numbered PDBs like 1CRN).
-- ProteinGym benchmark harness
-- Score label calibration (currently hardcoded placeholder thresholds
-  in `api/services/results_service.py`: `DAMAGING_LLR_THRESHOLD = -3.0`,
-  `TOLERATED_LLR_THRESHOLD = -0.5` — these are NOT calibrated against
-  real data yet, that's Phase 7)
+- ~~ProteinGym benchmark harness~~ **DONE (Phase 6):** `benchmark/run_benchmark.py`
+  scores ProteinGym DMS assays with ESM-2 → Spearman vs experimental fitness.
+  Curated 5-assay mean **0.447** (in line with published ESM-2 650M). Harness
+  in `benchmark/proteingym.py` (torch-free, scorer injected, unit-tested). See
+  `benchmark/README.md`.
+- ~~Score label calibration~~ **DONE (Phase 6):** `benchmark/calibrate.py`
+  calibrates the thresholds against **AlphaMissense** clinical labels (NOT raw
+  DMS fitness — different sensitivity, would mislabel human variants). Class-
+  balanced over ~15k pathogenic/benign substitutions across 5 human proteins
+  at 90% precision → `DAMAGING_LLR_THRESHOLD = -5.50`,
+  `TOLERATED_LLR_THRESHOLD = -1.33` (was -3.0/-0.5), ~31% uncertain band. Live
+  in `results_service.py`; verified TP53 R175H still `likely_damaging`.
 - Deployment (Cloud Run, GCS bucket, Neon Postgres) — decided Cloud Run +
   possibly Neon for Postgres (to get true scale-to-zero, avoid Cloud
   SQL's ~$10/mo idle cost) but not yet set up
