@@ -27,11 +27,14 @@ from domain.derive import (
 )
 from storage.matrix_store import MatrixStore
 
-# Initial thresholds. These become data-driven once the ProteinGym
-# calibration harness runs in Phase 7 — until then, use these placeholder
-# bounds so the API response schema is complete.
-DAMAGING_LLR_THRESHOLD = -3.0
-TOLERATED_LLR_THRESHOLD = -0.5
+# Calibrated against AlphaMissense clinical labels (benchmark/calibrate.py):
+# pooled ~15k class-balanced pathogenic/benign substitutions across 5 human
+# proteins (TP53, PTEN, KRAS, CDKN2A, RHO). At a 90% precision target,
+# LLR < -5.50 is 90% pathogenic and LLR > -1.33 is 90% benign; the ~31%
+# in between is genuinely uncertain. (ProteinGym Spearman validates the model
+# itself — see benchmark/README.md.)
+DAMAGING_LLR_THRESHOLD = -5.50
+TOLERATED_LLR_THRESHOLD = -1.33
 
 
 def classify_llr(llr: float) -> EffectLabel:
