@@ -72,10 +72,19 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    # Require TLS to Postgres (Neon and other managed providers mandate it).
+    # asyncpg takes ssl via connect_args (see db/session.py); psycopg2/Alembic
+    # takes it as a `sslmode=require` query param — handled below so a single
+    # clean DATABASE_URL (no ssl query args) works for both drivers.
+    db_require_ssl: bool = False
+
     @property
     def alembic_database_url(self) -> str:
         """Sync driver URL for Alembic. Swaps asyncpg -> psycopg2 automatically."""
-        return self.database_url.replace("+asyncpg", "+psycopg2")
+        url = self.database_url.replace("+asyncpg", "+psycopg2")
+        if self.db_require_ssl and "sslmode=" not in url:
+            url += ("&" if "?" in url else "?") + "sslmode=require"
+        return url
 
 
 @lru_cache(maxsize=1)
