@@ -251,9 +251,18 @@ build at all.
   at 90% precision → `DAMAGING_LLR_THRESHOLD = -5.50`,
   `TOLERATED_LLR_THRESHOLD = -1.33` (was -3.0/-0.5), ~31% uncertain band. Live
   in `results_service.py`; verified TP53 R175H still `likely_damaging`.
-- Deployment (Cloud Run, GCS bucket, Neon Postgres) — decided Cloud Run +
-  possibly Neon for Postgres (to get true scale-to-zero, avoid Cloud
-  SQL's ~$10/mo idle cost) but not yet set up
+- Deployment (Cloud Run, GCS bucket, Neon Postgres) — **CODE IS DEPLOY-READY
+  (Phase 7).** Cloud Run readiness done + verified: API image honours the
+  injected `$PORT` (shell-form CMD; confirmed a container serves /health on a
+  custom port), CORS origins from `CORS_ORIGINS` env, the ARQ worker runs a
+  stdlib health server on `$PORT` for the startup probe, `DB_REQUIRE_SSL`
+  gives asyncpg `ssl=True` + Alembic `sslmode=require` (Neon-ready), and
+  `MATRIX_STORAGE_BACKEND=gcs` swaps both stores to GCS. `DEPLOY.md` is the
+  full runbook (Cloud Run + Neon + Upstash Redis + GCS + Vercel), including
+  the honest note that the warm-model **worker must be always-on** (can't
+  scale to zero) — the one non-$0 piece. `.env.production.example` lists every
+  prod var. **Not executed** — needs the owner's GCP/Neon/Upstash/Vercel
+  accounts + secrets; all account steps are documented in DEPLOY.md.
 
 ## Immediate next steps (resume here)
 
