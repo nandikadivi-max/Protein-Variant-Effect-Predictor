@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     # --- Model ---
     default_model_id: str = "esm2_t33_650M_UR50D"
 
+    # --- Deployment ---
+    # Comma-separated allowed CORS origins (the deployed frontend origin(s)).
+    cors_origins: str = "http://localhost:3000"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     @property
     def alembic_database_url(self) -> str:
         """Sync driver URL for Alembic. Swaps asyncpg -> psycopg2 automatically."""

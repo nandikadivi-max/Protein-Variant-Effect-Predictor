@@ -13,6 +13,8 @@ The job function:
 """
 
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from arq.connections import RedisSettings
 from sqlalchemy import select
@@ -27,8 +29,31 @@ from worker.scorers.esm2 import DEFAULT_REVISION, ESM2Scorer
 SCORER: ESM2Scorer | None = None
 
 
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:  # noqa: N802
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def log_message(self, *args) -> None:  # silence per-request logging
+        pass
+
+
+def _start_health_server() -> None:
+    """
+    Serve a 200 on $PORT in a daemon thread. The worker consumes from Redis
+    and never handles HTTP, but Cloud Run (and similar) require a container to
+    pass a startup probe on the injected port. Harmless off-platform.
+    """
+    port = int(os.environ.get("PORT", "8080"))
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print(f"Health server listening on :{port}")
+
+
 async def startup(ctx: dict) -> None:
     global SCORER
+    _start_health_server()
     print("Loading ESM-2 650M (one-time cost)...")
     SCORER = ESM2Scorer()
     print(f"Model loaded on device: {SCORER.device}")
