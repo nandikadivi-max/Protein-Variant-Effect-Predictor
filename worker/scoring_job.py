@@ -32,34 +32,43 @@ async def run_scoring(
     """
     Load the sequence, score it, persist the matrix + DB pointer, mark the
     job done. Raises after marking the job ERROR so the transport can retry.
+
+    Deliberately uses three short-lived sessions rather than one long one.
+    Scoring a long protein takes minutes, and a managed Postgres (Neon and
+    friends are serverless and aggressive about idle connections) will drop a
+    connection held open across it — the write afterwards then fails with
+    PendingRollbackError and the job dies *after* the expensive work is done.
+    No connection is held while the model runs.
     """
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-    async with async_session_factory() as session:
-        jobs = JobService(session=session)
-        await jobs.mark_running(job_id)
-
-        try:
+    try:
+        # --- Session 1: claim the job and read the sequence. Short. ---
+        async with async_session_factory() as session:
+            await JobService(session=session).mark_running(job_id)
             result = await session.execute(
                 select(Protein).where(Protein.sequence_hash == sequence_hash)
             )
             protein = result.scalar_one_or_none()
             if protein is None:
                 raise RuntimeError(f"Protein {sequence_hash} not in database")
+            sequence = protein.sequence
 
-            # The expensive step. Everything else in the system is a cheap
-            # derivation of this one (L, 20) matrix.
-            #
-            # Off the event loop: this is seconds-to-minutes of blocking CPU,
-            # and the HTTP transport must keep answering /health throughout or
-            # Cloud Run will judge the container unresponsive and kill the job.
-            matrix = await asyncio.to_thread(
-                scorer.per_position_log_probs, protein.sequence
-            )
+        # --- No DB connection held here. ---
+        #
+        # The expensive step; everything else in the system is a cheap
+        # derivation of this one (L, 20) matrix.
+        #
+        # Off the event loop: this is seconds-to-minutes of blocking CPU, and
+        # the HTTP transport must keep answering /health throughout or Cloud
+        # Run will judge the container unresponsive and kill the job.
+        matrix = await asyncio.to_thread(scorer.per_position_log_probs, sequence)
 
-            store = get_matrix_store()
-            uri = store.write(model_id, sequence_hash, matrix)
+        store = get_matrix_store()
+        uri = store.write(model_id, sequence_hash, matrix)
 
+        # --- Session 2: record the matrix and finish the job. Short. ---
+        async with async_session_factory() as session:
             stmt = (
                 pg_insert(ScoreMatrix)
                 .values(
@@ -72,12 +81,19 @@ async def run_scoring(
             )
             await session.execute(stmt)
             await session.commit()
+            await JobService(session=session).mark_done(job_id)
 
-            await jobs.mark_done(job_id)
-
-        except Exception as exc:  # noqa: BLE001
-            await jobs.mark_error(job_id, error_message=repr(exc))
-            raise
+    except Exception as exc:  # noqa: BLE001
+        # --- Session 3: a fresh connection, because the failure above may well
+        # BE a dead connection. Reusing the broken session would lose the error.
+        try:
+            async with async_session_factory() as session:
+                await JobService(session=session).mark_error(
+                    job_id, error_message=repr(exc)
+                )
+        except Exception as mark_exc:  # noqa: BLE001
+            print(f"[job {job_id}] could not record failure: {mark_exc!r}")
+        raise
 
     # Best-effort structural features (DSSP). Runs after the job is already
     # marked done and in its own session, so a structure/DSSP hiccup can never

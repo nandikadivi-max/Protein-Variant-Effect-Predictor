@@ -22,7 +22,12 @@ _connect_args = {"ssl": True} if settings.db_require_ssl else {}
 engine = create_async_engine(
     settings.database_url,
     echo=False,
+    # Serverless Postgres (Neon) closes idle connections on its own schedule.
+    # pre_ping validates a connection at checkout; pool_recycle proactively
+    # discards ones older than the provider's idle window so we never hand out
+    # a socket the server has already dropped.
     pool_pre_ping=True,
+    pool_recycle=280,
     connect_args=_connect_args,
 )
 
