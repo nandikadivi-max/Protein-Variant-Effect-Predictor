@@ -1,0 +1,49 @@
+# Cloud Build config for both container images.
+#
+# Built in the cloud rather than locally for two reasons:
+#   1. Local dev machines here are arm64 (Apple Silicon); Cloud Run needs
+#      amd64. Cross-building under QEMU is slow and pulls the whole amd64
+#      wheel set — including the ~200MB torch wheel — down to the laptop.
+#   2. The build context is ~0.2MB (see .gcloudignore), so the only thing
+#      that crosses the local network is the source.
+#
+# The two builds are independent, so waitFor: ['-'] starts them together.
+
+steps:
+  - id: build-api
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['-']
+    args:
+      - build
+      - -f
+      - infra/Dockerfile.api
+      - -t
+      - ${_REPO}/api:latest
+      - .
+
+  - id: build-worker
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['-']
+    args:
+      - build
+      - -f
+      - infra/Dockerfile.worker
+      - -t
+      - ${_REPO}/worker:latest
+      - .
+
+images:
+  - ${_REPO}/api:latest
+  - ${_REPO}/worker:latest
+
+substitutions:
+  _REPO: us-east1-docker.pkg.dev/protein-variant-eff-predictor/pvep
+
+options:
+  machineType: E2_HIGHCPU_8
+  # The worker image is ~2.2GB (torch + model deps); the default 10GB disk
+  # is tight once layers and the push cache are counted.
+  diskSizeGb: 60
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 2400s

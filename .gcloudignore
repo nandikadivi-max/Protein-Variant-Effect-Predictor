@@ -1,0 +1,31 @@
+# What NOT to upload as Cloud Build context. Mirrors .dockerignore.
+#
+# This file matters more than it looks: without it, `gcloud builds submit`
+# falls back to .gitignore semantics and can ship .venv (1.1GB), data/
+# (2.2GB of matrices + the AlphaMissense SQLite) and frontend/node_modules
+# (441MB) over the wire on every build.
+
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.git/
+.gitignore
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local dev artifacts — never bake these into an image.
+.env
+.env.*
+data/
+frontend/node_modules/
+frontend/.next/
+
+# The frontend is deployed by Vercel, not built into either container image.
+frontend/
+
+# Docs / OS cruft
+.DS_Store
+*.md

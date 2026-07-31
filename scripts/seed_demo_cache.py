@@ -47,16 +47,23 @@ from db.session import async_session_factory
 from storage.structure_store import get_structure_store
 
 # Proteins worth having warm: recognisable to a biologist, each with a
-# well-known pathogenic variant to point at in the UI.
+# well-known pathogenic variant to point at in the UI, and spanning several
+# disease areas so the demo does not look cancer-only.
+#
+# Every entry MUST be <= domain.scoring.MAX_SEQUENCE_LENGTH (1022). That rules
+# out several obvious candidates — BRCA1 (1863), EGFR (1210), PIK3CA (1068) —
+# which is why the oncogene slot is KRAS rather than one of those.
 DEFAULT_TARGETS = [
-    "P04637",  # TP53   — R175H, the classic DNA-binding-domain hotspot
-    "P38398",  # BRCA1  — hereditary breast/ovarian cancer
-    "P01308",  # INS    — insulin; small and fast, good for a first demo
-    "P00533",  # EGFR   — L858R, targeted-therapy marker
-    "P42336",  # PIK3CA — most-mutated oncogene in breast cancer
-    "P0DP23",  # CALM1  — calmodulin; tiny, highly conserved
-    "P69905",  # HBA1   — haemoglobin alpha
-    "P68871",  # HBB    — haemoglobin beta; sickle-cell E6V
+    "P04637",  # TP53  (393) — R175H, the classic DNA-binding-domain hotspot
+    "P01116",  # KRAS  (189) — G12D, the most-mutated oncogene
+    "P60484",  # PTEN  (403) — tumour suppressor
+    "P06400",  # RB1   (928) — retinoblastoma; the long end of the range
+    "P00441",  # SOD1  (154) — A4V, familial ALS
+    "P37840",  # SNCA  (140) — A53T, Parkinson's
+    "P02766",  # TTR   (147) — V30M, hereditary amyloidosis
+    "P68871",  # HBB   (147) — E6V, sickle-cell
+    "P0DP23",  # CALM1 (149) — calmodulin; tiny and ultra-conserved
+    "P01308",  # INS   (110) — insulin; smallest, good first demo
 ]
 
 
