@@ -14,7 +14,9 @@ COPY config.py .
 COPY alembic.ini .
 COPY api/ ./api/
 
-RUN pip install --no-cache-dir -e .
+# [gcp] pulls google-cloud-tasks for the production job transport. Still no
+# torch — the API/worker boundary is intact.
+RUN pip install --no-cache-dir -e ".[gcp]"
 
 EXPOSE 8000
 # Shell form so Cloud Run's injected $PORT is honoured (defaults to 8000 for

@@ -11,18 +11,22 @@ what makes the whole system tolerable on CPU.
 import uuid
 from datetime import datetime, timezone
 
-from arq import ArqRedis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.services.job_dispatcher import JobDispatcher
 from contracts.schemas import JobStatus
 from db.models import Job, ScoreMatrix
 
 
 class JobService:
-    def __init__(self, session: AsyncSession, arq: ArqRedis) -> None:
+    def __init__(
+        self, session: AsyncSession, dispatcher: JobDispatcher | None = None
+    ) -> None:
         self.session = session
-        self.arq = arq
+        # Optional because the worker constructs a JobService purely to move
+        # jobs through mark_running/mark_done/mark_error — it never dispatches.
+        self.dispatcher = dispatcher
 
     async def create_or_reuse(
         self, sequence_hash: str, model_id: str
@@ -65,8 +69,9 @@ class JobService:
         self.session.add(job)
         await self.session.commit()
 
-        await self.arq.enqueue_job(
-            "score_job",
+        if self.dispatcher is None:
+            raise RuntimeError("JobService needs a dispatcher to enqueue work")
+        await self.dispatcher.dispatch(
             job_id=job_id,
             sequence_hash=sequence_hash,
             model_id=model_id,

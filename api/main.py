@@ -17,10 +17,15 @@ from config import get_settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Redis pool for ARQ is a per-process singleton, held on app.state.
-    app.state.arq_pool = await create_arq_pool()
-    yield
-    await app.state.arq_pool.close()
+    # Redis is only a job transport here — job *state* lives in Postgres. Under
+    # JOB_DISPATCH=cloudtasks nothing reads the queue, so we skip the pool and
+    # the deployment needs no Redis instance at all.
+    if get_settings().job_dispatch.lower() == "arq":
+        app.state.arq_pool = await create_arq_pool()
+        yield
+        await app.state.arq_pool.close()
+    else:
+        yield
 
 
 app = FastAPI(

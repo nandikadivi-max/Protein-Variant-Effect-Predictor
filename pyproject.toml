@@ -26,6 +26,11 @@ worker = [
     "transformers>=4.45.0",
     "accelerate>=0.34.0",
 ]
+gcp = [
+    # Cloud Tasks is the production job transport (see job_dispatcher.py).
+    # Kept out of the base deps so local dev and CI need not install it.
+    "google-cloud-tasks>=2.16.0",
+]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
@@ -43,6 +48,11 @@ target-version = "py311"
 # (torch, asyncpg, dssp) so the import doesn't blow up when the dep is absent.
 "**/test_*.py" = ["E402"]
 "tests/*.py" = ["E402"]
+
+[[tool.mypy.overrides]]
+# The google.cloud namespace packages ship no py.typed marker.
+module = ["google.cloud.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

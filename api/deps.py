@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.services.alphamissense_provider import AlphaMissenseProvider
 from api.services.annotation_client import AnnotationClient
 from api.services.annotation_service import AnnotationService
+from api.services.job_dispatcher import build_dispatcher
 from api.services.job_service import JobService
 from api.services.protein_resolver import ProteinResolver
 from api.services.results_service import ResultsService
@@ -32,9 +33,9 @@ async def get_db() -> AsyncIterator[AsyncSession]:
         yield session
 
 
-async def get_arq(request: Request) -> ArqRedis:
-    """Redis pool is created once at app startup and shared."""
-    return request.app.state.arq_pool
+async def get_arq(request: Request) -> ArqRedis | None:
+    """Redis pool, created once at app startup. None when dispatch is not ARQ."""
+    return getattr(request.app.state, "arq_pool", None)
 
 
 async def create_arq_pool() -> ArqRedis:
@@ -70,9 +71,11 @@ async def get_resolver(
 
 def get_job_service(
     session: AsyncSession = Depends(get_db),
-    arq: ArqRedis = Depends(get_arq),
+    arq: ArqRedis | None = Depends(get_arq),
 ) -> JobService:
-    return JobService(session=session, arq=arq)
+    return JobService(
+        session=session, dispatcher=build_dispatcher(get_settings(), arq)
+    )
 
 
 async def get_results_service(

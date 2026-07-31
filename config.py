@@ -64,6 +64,19 @@ class Settings(BaseSettings):
     # --- Model ---
     default_model_id: str = "esm2_t33_650M_UR50D"
 
+    # --- Job dispatch ---
+    # How a queued job reaches the worker (see api/services/job_dispatcher.py).
+    #   "arq"        = enqueue to Redis; a long-lived worker pulls. Dev default.
+    #   "cloudtasks" = Cloud Tasks pushes to the worker's POST /score over HTTP,
+    #                  which lets the worker scale to zero when idle.
+    job_dispatch: str = "arq"
+    gcp_project: str | None = None
+    cloud_tasks_location: str = "us-central1"
+    cloud_tasks_queue: str | None = None
+    cloud_tasks_service_account: str | None = None
+    # Base URL of the deployed worker service (no trailing /score).
+    worker_url: str | None = None
+
     # --- Deployment ---
     # Comma-separated allowed CORS origins (the deployed frontend origin(s)).
     cors_origins: str = "http://localhost:3000"

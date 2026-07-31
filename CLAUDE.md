@@ -39,10 +39,24 @@ position, and a 3D-colored residue silently refer to different numbering
 schemes.
 
 ### 3. Async from day one, warm model singleton
-The API process **never imports torch**. A separate ARQ worker process
-loads ESM-2 once at startup (`worker/main.py` `startup()`) and stays warm
-across jobs. This is a hard Docker image boundary — see "Process boundary"
-below.
+The API process **never imports torch**. A separate worker process loads
+ESM-2 once and stays warm across jobs. This is a hard Docker image
+boundary — see "Process boundary" below.
+
+The worker has **two transports**, sharing one scoring core
+(`worker/scoring_job.py` `run_scoring`):
+- **`worker/main.py`** — ARQ, *pulls* from Redis. Local dev. Model warm
+  forever.
+- **`worker/http_app.py`** — FastAPI `POST /score`, *pushed* to by Cloud
+  Tasks. Production. Scores inside the request so Cloud Run can scale the
+  worker to zero when idle. Model loads lazily on first use (a load in the
+  lifespan would risk failing the startup probe).
+
+The API picks a transport via `JOB_DISPATCH` (`arq` | `cloudtasks`) and
+depends only on the `JobDispatcher` protocol in
+`api/services/job_dispatcher.py` — it never learns which one carried the
+job. Redis is only a transport (job *state* lives in Postgres), so the
+Cloud Tasks path needs no Redis at all.
 
 ### The `Scorer` protocol (anti-refactor centerpiece)
 `domain/scoring.py` defines a `Scorer` Protocol with one method:
@@ -100,8 +114,10 @@ this machine — noting in case of a fresh machine setup later.
   services/        uniprot_client.py (real UniProt REST calls), protein_resolver.py,
                    job_service.py (cache-hit logic — THE critical perf path),
                    results_service.py (reads matrix, computes derived products)
-/worker            ARQ worker. The ONLY place torch/transformers/esm live.
-  main.py          Warm ESM-2 singleton, score_job (loads sequence, scores, persists)
+/worker            The ONLY place torch/transformers/esm live.
+  scoring_job.py   run_scoring() — the actual job body, shared by both transports
+  main.py          ARQ transport (pull from Redis). Warm ESM-2 singleton. Dev.
+  http_app.py      HTTP transport (POST /score). Lazy model load. Prod/Cloud Run.
   scorers/esm2.py  ESM2Scorer — masked-marginal scoring implementation
   scorers/test_esm2_smoke.py  TP53 R175H correctness smoke test (see below — MUST verify)
 /benchmark         Offline ProteinGym harness. NOT YET BUILT (Phase 7).
@@ -258,11 +274,19 @@ build at all.
   stdlib health server on `$PORT` for the startup probe, `DB_REQUIRE_SSL`
   gives asyncpg `ssl=True` + Alembic `sslmode=require` (Neon-ready), and
   `MATRIX_STORAGE_BACKEND=gcs` swaps both stores to GCS. `DEPLOY.md` is the
-  full runbook (Cloud Run + Neon + Upstash Redis + GCS + Vercel), including
-  the honest note that the warm-model **worker must be always-on** (can't
-  scale to zero) — the one non-$0 piece. `.env.production.example` lists every
-  prod var. **Not executed** — needs the owner's GCP/Neon/Upstash/Vercel
+  full runbook (Cloud Run + Neon + GCS + Vercel). `.env.production.example`
+  lists every prod var. **Not executed** — needs the owner's GCP/Neon/Vercel
   accounts + secrets; all account steps are documented in DEPLOY.md.
+- **Scale-to-zero worker (Phase 7c/7d, 2026-07-31):** the earlier design
+  required an always-on worker (`--min-instances 1 --no-cpu-throttling`),
+  which is the *expensive* Cloud Run configuration — realistically $50–130/mo,
+  not the ~$15 first estimated. Replaced with a push transport: Cloud Tasks →
+  worker `POST /score`, scoring inside the request. Whole stack is now ~$0
+  idle and **Redis/Upstash is no longer needed in production**. The
+  cold-start cost (~60–90s on a novel protein) is hidden by
+  `scripts/seed_demo_cache.py`, which pre-scores the demo proteins straight
+  into the prod DB + GCS bucket from a laptop; cached proteins are served by
+  the API alone and never wake the worker.
 
 ## Immediate next steps (resume here)
 

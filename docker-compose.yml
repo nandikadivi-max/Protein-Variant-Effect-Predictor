@@ -36,6 +36,9 @@ services:
       REDIS_URL: redis://redis:6379
       MATRIX_STORAGE_BACKEND: local
       MATRIX_STORAGE_PATH: /data/matrices
+      # Pull transport locally: the worker below stays up with the model warm.
+      # Production uses cloudtasks so the worker can scale to zero (DEPLOY.md).
+      JOB_DISPATCH: arq
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,6 +64,9 @@ services:
       MATRIX_STORAGE_PATH: /data/matrices
       MODEL_CACHE_DIR: /model_cache
       HF_HOME: /model_cache
+      # Long-lived Redis consumer, model warm across jobs. The image defaults
+      # to WORKER_MODE=http (the scale-to-zero production shape).
+      WORKER_MODE: arq
     depends_on:
       postgres:
         condition: service_healthy
