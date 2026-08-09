@@ -225,3 +225,9 @@ callers.
 
 **This is a research tool, not a clinical one.** Zero-shot language-model
 scores are evidence, not diagnosis.
+
+## License
+
+[MIT](LICENSE) © Nandika Divi. ESM-2 is MIT-licensed by Meta AI; ProteinGym,
+AlphaFold DB, AlphaMissense, and the EBI/RCSB data sources carry their own
+terms.
