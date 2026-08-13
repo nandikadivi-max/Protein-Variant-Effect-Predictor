@@ -35,6 +35,12 @@ gcp = [
     # Kept out of the base deps so local dev and CI need not install it.
     "google-cloud-tasks>=2.16.0",
 ]
+security = [
+    # Not imported directly — google-auth pulls it in — but pinned to a floor
+    # so a build can't silently resolve to a version pip-audit flags
+    # (PYSEC-2026-3552 affects <50.0.0).
+    "cryptography>=50.0.0",
+]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",

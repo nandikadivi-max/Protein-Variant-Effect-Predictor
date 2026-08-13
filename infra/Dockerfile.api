@@ -16,7 +16,7 @@ COPY api/ ./api/
 
 # [gcp] pulls google-cloud-tasks for the production job transport. Still no
 # torch — the API/worker boundary is intact.
-RUN pip install --no-cache-dir -e ".[gcp]"
+RUN pip install --no-cache-dir -e ".[gcp,security]"
 
 EXPOSE 8000
 # Shell form so Cloud Run's injected $PORT is honoured (defaults to 8000 for

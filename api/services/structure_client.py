@@ -3,12 +3,13 @@ Async structure-download client. Pulls a 3D model for a protein from
 either AlphaFold DB (predicted, UniProt-numbered) or RCSB (experimental,
 PDB-numbered).
 
-We download the PDB format specifically: the Debian `dssp` binary the
-worker runs against these files is most reliable on PDB, and Mol* reads
-PDB fine for the viewer. mmCIF is the more future-proof choice and can be
-swapped in later behind this same interface.
+We download the PDB format specifically: the worker's structural feature
+code parses these with Biopython's PDBParser, and Mol* reads PDB fine for
+the viewer. mmCIF is the more future-proof choice and can be swapped in
+later behind this same interface.
 """
 
+from urllib.parse import urlparse
 import httpx
 
 from config import get_settings
@@ -63,7 +64,30 @@ class StructureClient:
         url = f"{self._settings.rcsb_files_base}/{pdb_id}.pdb"
         return await self._download(url, pdb_id)
 
+    def _allowed_hosts(self) -> set[str]:
+        """Hosts we are willing to fetch a structure file from."""
+        return {
+            urlparse(self._settings.alphafold_api_base).hostname or "",
+            urlparse(self._settings.rcsb_files_base).hostname or "",
+            "alphafold.ebi.ac.uk",
+            "files.rcsb.org",
+        } - {""}
+
     async def _download(self, url: str, identifier: str) -> tuple[bytes, str]:
+        # The AlphaFold path fetches a URL taken from *their* API response
+        # rather than one we built, so it is worth confirming where it points
+        # before following it. Low likelihood, but an unchecked server-side
+        # fetch of an externally-supplied URL is the shape of an SSRF, and the
+        # check costs nothing.
+        parsed = urlparse(url)
+        if parsed.scheme not in ("https", "http") or (
+            parsed.hostname not in self._allowed_hosts()
+        ):
+            raise StructureNotFound(
+                f"Refusing to fetch a structure from an unexpected host: "
+                f"{parsed.hostname!r}"
+            )
+
         response = await self._client.get(url)
         if response.status_code == 404:
             raise StructureNotFound(f"No structure at {url}")
