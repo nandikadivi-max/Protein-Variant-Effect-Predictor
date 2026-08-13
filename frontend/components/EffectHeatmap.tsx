@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AA_ORDER } from "@/lib/types";
 import { llrColor } from "@/lib/color";
+import { useScrollSync } from "@/lib/useScrollSync";
+import { AXIS_W, CELL_W } from "@/lib/grid";
 
-const CELL_W = 14;
 const CELL_H = 16;
 const RULER_H = 18;
 const GRID_H = CELL_H * 20;
@@ -28,6 +29,9 @@ export function EffectHeatmap({ effectMap, highlight }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const L = effectMap.length;
+
+  // Keeps the DSSP track below locked to the same residue columns.
+  useScrollSync("residue-grid", scrollRef);
 
   // Wild-type residue per position = the column whose LLR is exactly 0.
   const wt = useMemo(
@@ -158,7 +162,7 @@ export function EffectHeatmap({ effectMap, highlight }: Props) {
         {/* Fixed amino-acid axis */}
         <div
           className="shrink-0 pr-1 text-right font-mono text-[10px] text-muted"
-          style={{ paddingTop: RULER_H }}
+          style={{ paddingTop: RULER_H, width: AXIS_W }}
         >
           {AA_ORDER.map((a) => (
             <div key={a} style={{ height: CELL_H, lineHeight: `${CELL_H}px` }}>
