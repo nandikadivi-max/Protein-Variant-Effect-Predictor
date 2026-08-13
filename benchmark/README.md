@@ -26,7 +26,12 @@ Result on the curated set (ESM-2 650M, masked-marginal):
 | RL401_YEAST_Roscoe_2013 | 128 | 0.599 |
 | **mean** | | **0.447** |
 
-In line with published ESM-2 650M ProteinGym numbers (~0.41–0.44). TAT is a
+This sits in the range reported for ESM-2 650M (~0.41–0.44), but it is not a
+like-for-like reproduction: published figures average over the full ProteinGym
+benchmark of ~200 assays, and this is five small ones chosen to run quickly.
+With individual assays spanning 0.017 to 0.599, a five-assay mean carries a
+lot of variance — read it as evidence the harness and the scorer are working,
+not as a benchmark result. Run `--limit` higher for a firmer number. TAT is a
 viral protein, a known weak spot for protein LMs.
 
 ## 2. Threshold calibration — *sets the user-facing label*

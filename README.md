@@ -53,9 +53,14 @@ experimental fitness:
 | RL401_YEAST_Roscoe_2013 | 128 | 0.599 |
 | **mean** | | **0.447** |
 
-In line with published ESM-2 650M numbers (~0.41–0.44). TAT is a viral
-protein — a known weak spot for protein language models, and left in rather
-than dropped to keep the average honest.
+This sits in the range reported for ESM-2 650M (~0.41–0.44), but it is not a
+like-for-like reproduction and shouldn't be read as one: published figures
+average over the full ProteinGym benchmark of ~200 assays, while this is five
+small ones chosen to run quickly. Five assays spanning 0.017 to 0.599 is a
+wide spread, so treat the mean as indicative of the harness working, not as a
+benchmark result. TAT is a viral protein, a known weak spot for protein
+language models, and is left in rather than dropped to keep the average
+honest.
 
 ### Where do the labels come from?
 

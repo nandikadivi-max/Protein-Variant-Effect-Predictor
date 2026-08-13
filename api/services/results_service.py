@@ -28,12 +28,21 @@ from domain.derive import (
 )
 from storage.matrix_store import MatrixStore
 
-# Calibrated against AlphaMissense clinical labels (benchmark/calibrate.py):
-# pooled ~15k class-balanced pathogenic/benign substitutions across 5 human
-# proteins (TP53, PTEN, KRAS, CDKN2A, RHO). At a 90% precision target,
-# LLR < -5.50 is 90% pathogenic and LLR > -1.33 is 90% benign; the ~31%
-# in between is genuinely uncertain. (ProteinGym Spearman validates the model
-# itself — see benchmark/README.md.)
+# Thresholds chosen to agree with AlphaMissense (benchmark/calibrate.py):
+# pooled ~15k class-balanced substitutions across 5 human proteins (TP53,
+# PTEN, KRAS, CDKN2A, RHO), targeting 90% precision against AlphaMissense's
+# pathogenic/benign calls. About 31% of substitutions fall between the two
+# thresholds and are reported as uncertain.
+#
+# What this does and does not mean. AlphaMissense is itself a predictor, not
+# experimental or clinical ground truth, so "90% precision" is 90% agreement
+# with another model — not 90% of variants being genuinely pathogenic. It was
+# still the right reference to calibrate against: DMS fitness assays measure a
+# different thing at a different sensitivity, and thresholds derived from them
+# label TP53 R175H, a well-established pathogenic hotspot, as tolerated. But
+# the labels this produces are a research signal, and inherit whatever
+# AlphaMissense gets wrong. (ProteinGym Spearman validates the underlying
+# model separately — see benchmark/README.md.)
 DAMAGING_LLR_THRESHOLD = -5.50
 TOLERATED_LLR_THRESHOLD = -1.33
 

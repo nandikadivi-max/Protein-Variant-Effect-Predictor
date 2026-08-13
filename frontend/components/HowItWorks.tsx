@@ -112,10 +112,12 @@ export function HowItWorks() {
                   ProteinGym
                 </a>
                 , which collects experiments where labs measured thousands of
-                mutations directly. Mean Spearman correlation of{" "}
-                <span className="font-mono">0.447</span> between this score and
-                real measured fitness, which is in line with published numbers
-                for this model size.
+                mutations directly. Across five of those assays the mean
+                Spearman correlation between this score and real measured
+                fitness is <span className="font-mono">0.447</span>, which sits
+                in the range reported for this model size. Five assays is a
+                small sample though, and individual ones here range from 0.02
+                to 0.60.
               </Block>
             </div>
 
@@ -128,8 +130,11 @@ export function HowItWorks() {
               often count the mature protein instead, after that methionine is
               removed, so they can sit one lower: sickle-cell haemoglobin is
               famously <span className="font-mono">E6V</span> but is{" "}
-              <span className="font-mono text-ink">E7V</span> here. Everything
-              on this page is a research tool, not a clinical one.
+              <span className="font-mono text-ink">E7V</span> here. Scores are
+              always against UniProt&apos;s canonical isoform, so a variant
+              reported against a different transcript may sit at a different
+              position. Everything on this page is a research tool, not a
+              clinical one.
             </p>
           </motion.div>
         )}

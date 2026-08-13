@@ -50,6 +50,15 @@ export function SingleScoreCard({ single, annotation }: Props) {
         </p>
       </div>
 
+      {single.mutation.includes(":") && (
+        <p className="mt-3 text-xs text-muted">
+          This score is the sum of each substitution scored on its own, which
+          assumes they act independently. Residues that interact can behave
+          very differently together than apart, so read a combined score as a
+          rough guide rather than a prediction about the double mutant.
+        </p>
+      )}
+
       {single.percentile != null && (
         <div className="mt-4 border-t border-border pt-4">
           <div className="text-xs font-medium uppercase tracking-wide text-muted">
