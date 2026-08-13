@@ -7,8 +7,11 @@
 #                    or any always-on host.
 FROM python:3.11-slim
 
+# No `dssp` package here on purpose. mkdssp 4.x aborts without the wwPDB
+# chemical component dictionary, which Debian doesn't ship and which is
+# ~800MB uncompressed, so it never produced output in this image. Secondary
+# structure is computed in pure Python instead (worker/features/dssp.py).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    dssp \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,7 +29,8 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
     "torch>=2.4.0" \
     && pip install --no-cache-dir \
     "transformers>=4.45.0" \
-    "accelerate>=0.34.0"
+    "accelerate>=0.34.0" \
+    "pydssp>=0.9.0"
 
 # Source must be present before the editable install: setuptools discovers
 # packages from the copied tree at build time (see pyproject find/include).
