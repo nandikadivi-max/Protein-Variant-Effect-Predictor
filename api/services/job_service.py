@@ -15,8 +15,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.services.job_dispatcher import JobDispatcher
+from config import get_settings
 from contracts.schemas import JobStatus
-from db.models import Job, ScoreMatrix
+from db.models import Job, Protein, ScoreMatrix
+
+
+class UnknownProtein(Exception):
+    """No protein row for this sequence_hash. Resolve it first."""
+
+
+class UnsupportedModel(Exception):
+    """A model this deployment does not serve."""
 
 
 class JobService:
@@ -36,8 +45,33 @@ class JobService:
         - cached=True: the matrix already exists; job_id refers to a
           synthetic completed job, status is DONE, no work is enqueued.
         - cached=False: a new job is created and enqueued.
+
+        Both inputs are validated before anything is written, because getting
+        this wrong is expensive rather than merely untidy. An unrecognised
+        model_id used to sail through: it could never match a cached matrix,
+        so every request with a junk model name created a job and woke the
+        worker for a full scoring run, then stored the result under a model
+        that does not exist. An unknown sequence_hash used to violate the
+        proteins foreign key and surface as a 500.
         """
-        # Cache check first — this is the whole point of the design.
+        expected_model = get_settings().default_model_id
+        if model_id != expected_model:
+            raise UnsupportedModel(
+                f"Unknown model '{model_id}'. This deployment serves {expected_model}."
+            )
+
+        protein = await self.session.execute(
+            select(Protein.sequence_hash).where(
+                Protein.sequence_hash == sequence_hash
+            )
+        )
+        if protein.scalar_one_or_none() is None:
+            raise UnknownProtein(
+                f"No protein for sequence_hash '{sequence_hash[:16]}'. "
+                "Resolve the protein first."
+            )
+
+        # Cache check — this is the whole point of the design.
         result = await self.session.execute(
             select(ScoreMatrix).where(
                 ScoreMatrix.sequence_hash == sequence_hash,

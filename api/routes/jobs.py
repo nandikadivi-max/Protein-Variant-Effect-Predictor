@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.deps import get_job_service
-from api.services.job_service import JobService
+from api.services.job_service import JobService, UnknownProtein, UnsupportedModel
 from contracts.schemas import (
     CreateJobRequest,
     CreateJobResponse,
@@ -18,9 +18,14 @@ async def create_job(
     req: CreateJobRequest,
     jobs: JobService = Depends(get_job_service),
 ) -> CreateJobResponse:
-    job_id, status, cached = await jobs.create_or_reuse(
-        sequence_hash=req.sequence_hash, model_id=req.model_id
-    )
+    try:
+        job_id, status, cached = await jobs.create_or_reuse(
+            sequence_hash=req.sequence_hash, model_id=req.model_id
+        )
+    except UnsupportedModel as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except UnknownProtein as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return CreateJobResponse(job_id=job_id, status=status, cached=cached)
 
 

@@ -8,6 +8,20 @@ import httpx
 from config import get_settings
 
 
+def _echo_safe(value: str, limit: int = 60) -> str:
+    """
+    Make user input safe to quote back in an error message.
+
+    Error strings reach both the client and the application log. Echoing raw
+    input meant a newline in the query produced a message spanning several
+    lines, which forges log entries, and an unbounded value made the message
+    as large as the request. Control characters are stripped and the whole
+    thing is truncated.
+    """
+    cleaned = "".join(ch for ch in value if ch.isprintable())
+    return cleaned[:limit] + "…" if len(cleaned) > limit else cleaned
+
+
 class UniProtNotFound(Exception):
     """Raised when a UniProt query returns no matching reviewed entry."""
 
@@ -61,5 +75,7 @@ class UniProtClient:
 
         results = response.json().get("results", [])
         if not results:
-            raise UniProtNotFound(f"No reviewed UniProt entry found for gene '{query}'")
+            raise UniProtNotFound(
+                f"No reviewed UniProt entry found for gene '{_echo_safe(query)}'"
+            )
         return results[0]["primaryAccession"]
