@@ -22,8 +22,12 @@ const PHASE_TEXT: Record<string, string> = {
   queued: "Queued for scoring…",
   // A protein nobody has scored before needs a full forward pass per position,
   // so say so rather than leaving the user watching an unexplained spinner.
+  // Measured on the deployed CPU worker: ~2.4s per residue, because scoring
+  // needs one masked forward pass per position. A 150-residue protein takes
+  // about six minutes from cold; the demo proteins are pre-scored and return
+  // instantly. Promising "about a minute" here was simply wrong.
   running:
-    "Running ESM-2, one masked forward pass per position. The first time for a given protein takes about a minute, then it's cached.",
+    "Scoring with ESM-2. Every position gets its own masked forward pass, so a protein nobody has run before takes a few minutes on CPU. It's cached afterwards, and the examples above are already warm.",
 };
 
 export default function Home() {
@@ -65,9 +69,18 @@ export default function Home() {
       </section>
 
       {busy && (
-        <div className="mt-6 flex items-center gap-3 text-sm text-muted">
-          <span className="h-3 w-3 animate-spin rounded-full border-2 border-border border-t-ink" />
-          {PHASE_TEXT[p.phase]}
+        <div className="mt-6 flex items-start gap-3 text-sm text-muted">
+          <span className="mt-1 h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-border border-t-ink" />
+          <div>
+            <div>{PHASE_TEXT[p.phase]}</div>
+            {p.cached === false && p.resolved && (
+              <div className="mt-1 text-xs">
+                {p.resolved.length} residues, never scored before. Rough
+                estimate: <strong>{estimateMinutes(p.resolved.length)}</strong>.
+                You can leave this open; the result is cached once it finishes.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -187,6 +200,22 @@ function ResolvedMeta({
       ))}
     </div>
   );
+}
+
+/**
+ * Rough wall-clock for scoring a protein that isn't cached.
+ *
+ * Measured against the deployed CPU worker: scoring is one masked forward
+ * pass per residue, which came out around 2.4 s/residue on 4 vCPU. The worker
+ * now runs 8, so this halves that and rounds up, plus a fixed minute or so of
+ * cold start (container boot and pulling the model weights). Deliberately
+ * vague wording, since the real figure moves with instance warmth.
+ */
+function estimateMinutes(length: number): string {
+  const minutes = 1 + (length * 1.2) / 60;
+  if (minutes < 2) return "a minute or two";
+  if (minutes < 10) return `around ${Math.round(minutes)} minutes`;
+  return `${Math.round(minutes / 5) * 5} minutes or more`;
 }
 
 function parseMutation(m: string): { pos: number; aa: string } | null {

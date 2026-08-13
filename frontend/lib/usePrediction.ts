@@ -18,6 +18,9 @@ export interface PredictionState {
   result?: ScoreResult;
   mutation?: string;
   error?: string;
+  /** False when this protein had to be scored from scratch. Lets the UI warn
+   *  that the wait is minutes rather than leaving a bare spinner. */
+  cached?: boolean;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -39,9 +42,10 @@ export function usePrediction() {
       setState({ phase: "queued", resolved, mutation: mut });
 
       const job = await createJob(resolved.sequence_hash);
+      const cached = job.cached;
       let status = job.status;
       while (status === "queued" || status === "running") {
-        setState({ phase: status, resolved, mutation: mut });
+        setState({ phase: status, resolved, mutation: mut, cached });
         await sleep(1200);
         const js = await getJob(job.job_id);
         status = js.status;
@@ -51,7 +55,7 @@ export function usePrediction() {
       }
 
       const result = await getResult(resolved.sequence_hash, usableMutation);
-      setState({ phase: "done", resolved, result, mutation: mut });
+      setState({ phase: "done", resolved, result, mutation: mut, cached });
     } catch (e) {
       setState({ phase: "error", error: (e as Error).message, mutation: mut });
     }
