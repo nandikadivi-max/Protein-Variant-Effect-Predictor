@@ -68,5 +68,5 @@ def test_protein_row_is_keyed_only_by_sequence_hash() -> None:
     sequence, so a gene name, an accession, a PDB id and a pasted sequence
     that all denote the same protein land on one row and share one score.
     """
-    pk = [c.name for c in Protein.__table__.primary_key.columns]
+    pk = [c.name for c in Protein.__table__.primary_key]
     assert pk == ["sequence_hash"]

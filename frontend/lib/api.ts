@@ -94,6 +94,28 @@ export function getCachedProteins(limit = 12): Promise<CachedProtein[]> {
   return request(`/proteins/cached?limit=${limit}`);
 }
 
+export interface SiftsSegment {
+  chain_id: string;
+  pdb_start: number;
+  pdb_end: number;
+  unp_start: number;
+  unp_end: number;
+}
+
+export interface StructureInfo {
+  sequence_hash: string;
+  provider: string;
+  format: string;
+  source_url: string;
+  file_url: string;
+  sifts_segments: SiftsSegment[];
+}
+
+/** Structure metadata, including the numbering map the viewer colours by. */
+export function getStructureInfo(sequenceHash: string): Promise<StructureInfo> {
+  return request(`/structures/${sequenceHash}`);
+}
+
 export function structureFileUrl(sequenceHash: string): string {
   return `${API_BASE}/structures/${sequenceHash}/file`;
 }

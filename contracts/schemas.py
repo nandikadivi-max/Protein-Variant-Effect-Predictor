@@ -83,6 +83,16 @@ class SingleScore(BaseModel):
     label: EffectLabel
 
 
+class SiftsSegment(BaseModel):
+    """One contiguous author-numbering -> UniProt-numbering run in a chain."""
+
+    chain_id: str
+    pdb_start: int
+    pdb_end: int
+    unp_start: int
+    unp_end: int
+
+
 class StructureInfo(BaseModel):
     """Metadata for a fetched 3D structure file (served to the Mol* viewer)."""
     sequence_hash: str
@@ -90,6 +100,11 @@ class StructureInfo(BaseModel):
     format: str          # "pdb"
     source_url: str      # upstream provenance (AlphaFold DB / RCSB)
     file_url: str        # our endpoint that streams the raw bytes
+    # Empty for AlphaFold, whose residue numbering already IS UniProt
+    # numbering. For an experimental entry these are what let the viewer
+    # colour by UniProt position instead of by the file's own numbering —
+    # without them a cropped structure is coloured with a constant offset.
+    sifts_segments: list[SiftsSegment] = Field(default_factory=list)
 
 
 class StructureContext(BaseModel):

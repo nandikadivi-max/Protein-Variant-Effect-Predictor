@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import "molstar/build/viewer/molstar.css";
 import { makeImpactColorThemeProvider } from "@/lib/impactColorTheme";
+import { getStructureInfo, type SiftsSegment } from "@/lib/api";
 
 interface Props {
   fileUrl: string;
   perResidueImpact: number[];
   /** e.g. "R175H", or "R248Q:D281N". Null hides the marker. */
   mutation?: string | null;
+  /** Hash used to look up the numbering map for colouring. */
+  sequenceHash: string;
 }
 
 // Three-letter to one-letter, written out rather than imported from a Mol*
@@ -76,6 +79,7 @@ export function StructureViewer({
   fileUrl,
   perResidueImpact,
   mutation = null,
+  sequenceHash,
 }: Props) {
   const parent = useRef<HTMLDivElement>(null);
   const pluginRef = useRef<any>(null);
@@ -126,7 +130,19 @@ export function StructureViewer({
 
         // Register the per-residue impact color theme (closes over the data).
         // Each plugin instance has its own registry, so a single add is safe.
-        const provider = makeImpactColorThemeProvider(perResidueImpact);
+        // Colouring is by UniProt position, so an experimental structure
+        // needs its author-numbering map or every residue is painted with a
+        // constant offset. AlphaFold returns none and falls through to
+        // identity. Failing to fetch it must not stop the structure loading.
+        let segments: SiftsSegment[] = [];
+        try {
+          segments = (await getStructureInfo(sequenceHash)).sifts_segments ?? [];
+        } catch {
+          /* colour by identity numbering rather than not rendering at all */
+        }
+        if (disposed) return;
+
+        const provider = makeImpactColorThemeProvider(perResidueImpact, segments);
         try {
           plugin.representation.structure.themes.colorThemeRegistry.add(
             provider as any,
@@ -169,7 +185,7 @@ export function StructureViewer({
     // and rebuilds the whole plugin, so reacting to the mutation would tear
     // down the viewer, re-download the PDB and reset the camera every time
     // the user picks a different variant. The marker lives in its own effect.
-  }, [fileUrl, perResidueImpact]);
+  }, [fileUrl, perResidueImpact, sequenceHash]);
 
   // Mark the mutated residue(s). Separate from init so changing the mutation
   // costs one small component swap instead of a full viewer rebuild.

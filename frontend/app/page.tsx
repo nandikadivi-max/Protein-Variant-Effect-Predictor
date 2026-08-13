@@ -220,6 +220,7 @@ export default function Home() {
                 fileUrl={structureFileUrl(p.result.sequence_hash)}
                 perResidueImpact={p.result.per_residue_impact}
                 mutation={single?.mutation ?? null}
+                sequenceHash={p.result.sequence_hash}
               />
             </Reveal>
           )}

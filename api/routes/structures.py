@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from api.deps import get_structure_service
 from api.services.structure_service import StructureService
-from contracts.schemas import StructureInfo
+from contracts.schemas import SiftsSegment, StructureInfo
 
 router = APIRouter()
 
@@ -32,12 +32,19 @@ async def get_structure(
             status_code=404,
             detail=f"No structure available for {sequence_hash} (unknown protein or FASTA-only input)",
         )
+    # The viewer colours residues by UniProt position. An experimental entry
+    # numbers its residues however the depositors did, so without this map a
+    # cropped structure is coloured with a constant offset — 1TUP's p53 DBD
+    # runs 1-219 in the file but 94-312 in UniProt.
+    segments = await structures.load_sifts_segments(sequence_hash) or []
+
     return StructureInfo(
         sequence_hash=record.sequence_hash,
         provider=record.provider,
         format=record.fmt,
         source_url=record.source_url,
         file_url=_file_url(sequence_hash),
+        sifts_segments=[SiftsSegment(**s) for s in segments],
     )
 
 
