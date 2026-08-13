@@ -3,6 +3,8 @@ Async UniProt REST client. Fetches canonical isoform sequences for a
 UniProt accession and resolves gene names to an accession.
 """
 
+import difflib
+
 import httpx
 
 from config import get_settings
@@ -96,9 +98,39 @@ class UniProtClient:
         if not cleaned:
             return []
 
+        # Free-text first: this is what turns "hemoglobin beta" into HBB.
+        hits = await self._search(
+            f"{cleaned} AND organism_id:{organism_id} AND reviewed:true", limit
+        )
+        if hits:
+            return hits
+
+        # Nothing matched, so the input is likely a misspelt symbol. UniProt
+        # does token matching, not fuzzy matching, so "TP54" finds nothing at
+        # all. Search the stem with a wildcard and rank what comes back by
+        # similarity to what was typed — otherwise "TP5*" answers TP53BP1
+        # before TP53.
+        stem = cleaned.split()[0]
+        if len(stem) < 3 or not stem.isalnum():
+            return []
+        wide = await self._search(
+            f"gene:{stem[:-1]}* AND organism_id:{organism_id} AND reviewed:true",
+            limit=40,
+        )
+        if not wide:
+            return []
+
+        by_symbol = {symbol.upper(): (acc, symbol, name) for acc, symbol, name in wide if symbol}
+        close = difflib.get_close_matches(
+            stem.upper(), list(by_symbol), n=limit, cutoff=0.5
+        )
+        return [by_symbol[sym] for sym in close]
+
+    async def _search(self, query: str, limit: int) -> list[tuple[str, str, str]]:
+        """Run one UniProt search, returning (accession, symbol, protein name)."""
         url = f"{self._settings.uniprot_api_base}/uniprotkb/search"
         params = {
-            "query": f"{cleaned} AND organism_id:{organism_id} AND reviewed:true",
+            "query": query,
             "format": "json",
             "size": str(limit),
             "fields": "accession,gene_primary,protein_name",
