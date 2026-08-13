@@ -44,6 +44,14 @@ export function StructureViewer({ fileUrl, perResidueImpact }: Props) {
           render: renderReact18,
           spec,
         });
+        // `disposed` was last checked before this await. A rapid re-query can
+        // supersede this run mid-flight, and without re-checking here the
+        // stale run overwrites pluginRef and builds into the same div, leaving
+        // an orphaned WebGL context that nothing will ever dispose.
+        if (disposed) {
+          plugin.dispose();
+          return;
+        }
         pluginRef.current = plugin;
 
         // Register the per-residue impact color theme (closes over the data).
@@ -100,10 +108,17 @@ export function StructureViewer({ fileUrl, perResidueImpact }: Props) {
       {error ? (
         <div className="text-sm text-muted">Could not load structure: {error}</div>
       ) : (
+        // Mol* already fits the camera to the scene on first commit, so the
+        // structure looking small was never a missing zoom. It fits the
+        // SMALLER viewport dimension, and a full-width box here was ~1072x440
+        // (aspect 2.44), so the protein filled the height but barely a third
+        // of the width and the rest was empty canvas. Constraining the width
+        // brings the frame near square and the structure fills it, with no
+        // camera code at all. The heatmap and DSSP track keep full width.
         <div
           ref={parent}
-          className="relative overflow-hidden rounded-md"
-          style={{ width: "100%", height: 440 }}
+          className="relative mx-auto w-full max-w-[640px] overflow-hidden rounded-md"
+          style={{ height: 480 }}
         />
       )}
     </div>
