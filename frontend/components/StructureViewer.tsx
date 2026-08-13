@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import "molstar/build/viewer/molstar.css";
 import { makeImpactColorThemeProvider } from "@/lib/impactColorTheme";
 import { getStructureInfo, type SiftsSegment } from "@/lib/api";
+import {
+  makeConfidenceColorThemeProvider,
+  PLDDT_BANDS,
+} from "@/lib/confidenceColorTheme";
 
 interface Props {
   fileUrl: string;
@@ -112,6 +116,15 @@ export function StructureViewer({
   // Gates the marker effect below: the structure must exist before anything
   // can select a residue in it.
   const [ready, setReady] = useState(false);
+  // "impact" is the point of the tool; "confidence" is offered only for
+  // predicted models, where the B-factor column holds pLDDT. In an
+  // experimental structure that column is the atomic displacement parameter,
+  // where high means mobile rather than trustworthy — the inverse reading —
+  // so offering the mode there would be actively misleading.
+  const [mode, setMode] = useState<"impact" | "confidence">("impact");
+  const [info, setInfo] = useState<{ provider: string; pdbId: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -160,20 +173,31 @@ export function StructureViewer({
         // identity. Failing to fetch it must not stop the structure loading.
         let segments: SiftsSegment[] = [];
         try {
-          segments = (await getStructureInfo(sequenceHash)).sifts_segments ?? [];
+          const meta = await getStructureInfo(sequenceHash);
+          segments = meta.sifts_segments ?? [];
+          if (!disposed) {
+            setInfo({
+              provider: meta.provider,
+              pdbId: (meta.source_url.match(/([0-9a-z]{4})\.pdb/i) ?? [])[1] ?? "",
+            });
+          }
         } catch {
           /* colour by identity numbering rather than not rendering at all */
         }
         if (disposed) return;
 
         segmentsRef.current = segments;
-        const provider = makeImpactColorThemeProvider(perResidueImpact, segments);
-        try {
-          plugin.representation.structure.themes.colorThemeRegistry.add(
-            provider as any,
-          );
-        } catch {
-          /* already registered on this plugin */
+        for (const theme of [
+          makeImpactColorThemeProvider(perResidueImpact, segments),
+          makeConfidenceColorThemeProvider(),
+        ]) {
+          try {
+            plugin.representation.structure.themes.colorThemeRegistry.add(
+              theme as any,
+            );
+          } catch {
+            /* already registered on this plugin */
+          }
         }
 
         const data = await plugin.builders.data.download(
@@ -190,6 +214,9 @@ export function StructureViewer({
         await plugin.builders.structure.representation.addRepresentation(
           structure,
           { type: "cartoon", color: "variant-impact" as any },
+          // Tagged so the colour-mode effect updates this representation
+          // instead of appending a second cartoon over the first.
+          { tag: "main-cartoon" },
         );
 
         structureRef.current = structure;
@@ -211,6 +238,33 @@ export function StructureViewer({
     // down the viewer, re-download the PDB and reset the camera every time
     // the user picks a different variant. The marker lives in its own effect.
   }, [fileUrl, perResidueImpact, sequenceHash]);
+
+  // Repaint when the colour mode changes. Its own effect, like the marker:
+  // putting `mode` on the init effect would dispose the plugin and re-download
+  // the structure just to change a colour scheme.
+  useEffect(() => {
+    if (!ready) return;
+    const plugin = pluginRef.current;
+    const structure = structureRef.current;
+    if (!plugin || !structure) return;
+
+    (async () => {
+      try {
+        await plugin.builders.structure.representation.addRepresentation(
+          structure,
+          {
+            type: "cartoon",
+            color: (mode === "impact"
+              ? "variant-impact"
+              : "plddt-confidence") as any,
+          },
+          { tag: "main-cartoon" },
+        );
+      } catch (e) {
+        console.warn("[viewer] could not switch colour mode:", e);
+      }
+    })();
+  }, [mode, ready]);
 
   // Mark the mutated residue(s). Separate from init so changing the mutation
   // costs one small component swap instead of a full viewer rebuild.
@@ -289,25 +343,97 @@ export function StructureViewer({
     };
   }, [mutation, ready]);
 
+  // Only a predicted model carries pLDDT in its B-factor column; in an
+  // experimental structure that column means the opposite thing.
+  const isPrediction = info?.provider === "alphafold";
+
   return (
     <div className="rounded-lg border border-border bg-surface-raised p-4">
       <div className="mb-3">
-        <h3 className="text-sm font-medium">
-          3D structure{" "}
-          <span className="text-muted">· coloured by predicted impact</span>
-        </h3>
-        <p className="mt-0.5 text-xs text-muted">
-          The folded shape, painted by how badly the model expects each position
-          to break if changed. Red is intolerant, pale is relaxed. Drag to
-          rotate; the red interior is the part that has to fold precisely.
-          {mutation && (
-            <>
-              {" "}
-              The dark residue is{" "}
-              <span className="font-mono text-ink">{mutation}</span>.
-            </>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-medium">
+              3D structure{" "}
+              <span className="text-muted">
+                ·{" "}
+                {isPrediction
+                  ? "AlphaFold prediction"
+                  : `PDB ${info?.pdbId?.toUpperCase() || "entry"}, experimental`}
+              </span>
+            </h3>
+            {/* Which structure you are looking at was never stated, which is
+                what made a predicted model and a crystal structure
+                indistinguishable on the page. */}
+          </div>
+          {isPrediction && (
+            <div className="flex shrink-0 overflow-hidden rounded-md border border-border text-xs">
+              {(["impact", "confidence"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  className={`px-2.5 py-1 transition-colors ${
+                    mode === m
+                      ? "bg-ink text-surface-raised"
+                      : "text-muted hover:text-ink"
+                  }`}
+                >
+                  {m === "impact" ? "Impact" : "Confidence"}
+                </button>
+              ))}
+            </div>
           )}
-        </p>
+        </div>
+
+        {mode === "impact" ? (
+          <p className="mt-1 text-xs text-muted">
+            The folded shape, painted by how badly the model expects each
+            position to break if changed. Red is intolerant, pale is relaxed.
+            Drag to rotate.
+            {mutation && (
+              <>
+                {" "}
+                The dark residue is{" "}
+                <span className="font-mono text-ink">{mutation}</span>.
+              </>
+            )}
+            {isPrediction && (
+              <>
+                {" "}
+                This is a prediction, not an experimental structure — switch to{" "}
+                <button
+                  type="button"
+                  onClick={() => setMode("confidence")}
+                  className="border-b border-dotted border-muted/60 hover:text-ink"
+                >
+                  Confidence
+                </button>{" "}
+                to see which parts of it are trustworthy.
+              </>
+            )}
+          </p>
+        ) : (
+          <div className="mt-1 text-xs text-muted">
+            <p>
+              AlphaFold&apos;s own confidence in each residue (pLDDT). Long
+              stretches of orange are usually intrinsically disordered: real,
+              but with no single fixed shape, so the impact colours there
+              describe sequence conservation rather than a fold.
+            </p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-3">
+              {PLDDT_BANDS.map((b) => (
+                <span key={b.label} className="flex items-center gap-1">
+                  <span
+                    className="inline-block h-2 w-2 rounded-sm"
+                    style={{ background: b.color }}
+                  />
+                  {b.label}{" "}
+                  <span className="text-muted/60">{b.detail}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       {error ? (
         <div className="text-sm text-muted">Could not load structure: {error}</div>
