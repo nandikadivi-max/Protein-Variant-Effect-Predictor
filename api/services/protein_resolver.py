@@ -25,7 +25,16 @@ class ProteinNotFound(Exception):
 
     Distinct from ValueError, which means the input itself was unusable.
     The route maps this to 404 and ValueError to 400.
+
+    Carries "did you mean" candidates when a loose search turned any up, so
+    the caller can offer them instead of leaving the user to guess.
     """
+
+    def __init__(
+        self, message: str, candidates: list[tuple[str, str, str]] | None = None
+    ) -> None:
+        super().__init__(message)
+        self.candidates = candidates or []
 
 
 class ProteinResolver:
@@ -55,7 +64,11 @@ class ProteinResolver:
             try:
                 accession = await self.uniprot.search_by_gene_name(raw_input.strip())
             except UniProtNotFound as e:
-                raise ProteinNotFound(str(e)) from e
+                # Exact match failed. Try a loose search purely to offer
+                # alternatives — a typo like "TP54" should surface TP53 rather
+                # than a dead end. These are never resolved automatically.
+                candidates = await self.uniprot.suggest_similar(raw_input.strip())
+                raise ProteinNotFound(str(e), candidates) from e
             protein = await self._resolve_uniprot(accession)
         elif kind == "fasta":
             sequence = clean_fasta(raw_input)

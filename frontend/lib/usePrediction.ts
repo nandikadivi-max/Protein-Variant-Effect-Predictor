@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { createJob, getJob, getResult, resolveProtein } from "./api";
+import {
+  ApiError,
+  createJob,
+  getJob,
+  getResult,
+  resolveProtein,
+  type ProteinSuggestion,
+} from "./api";
 import type { ResolveResponse, ScoreResult } from "./types";
 
 export type Phase =
@@ -18,6 +25,9 @@ export interface PredictionState {
   result?: ScoreResult;
   mutation?: string;
   error?: string;
+  /** Alternatives the API offered alongside a rejection, e.g. a near-miss
+   *  gene name. Rendered as one-click retries. */
+  suggestions?: ProteinSuggestion[];
   /** False when this protein had to be scored from scratch. Lets the UI warn
    *  that the wait is minutes rather than leaving a bare spinner. */
   cached?: boolean;
@@ -61,7 +71,12 @@ export function usePrediction() {
       const result = await getResult(resolved.sequence_hash, usableMutation);
       setState({ phase: "done", resolved, result, mutation: mut, cached });
     } catch (e) {
-      setState({ phase: "error", error: (e as Error).message, mutation: mut });
+      setState({
+        phase: "error",
+        error: (e as Error).message,
+        suggestions: e instanceof ApiError ? e.suggestions : [],
+        mutation: mut,
+      });
     }
   }, []);
 

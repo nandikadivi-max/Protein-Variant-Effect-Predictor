@@ -27,6 +27,13 @@ class ResolveRequest(BaseModel):
     mutation: str | None = Field(None, description="e.g. 'R248Q' or 'R248Q:D281N'")
 
 
+class MutationSuggestion(BaseModel):
+    """A correction the client can apply directly, with its justification."""
+
+    mutation: str = Field(..., description="The corrected mutation, e.g. 'E7V'")
+    reason: str = Field(..., description="Why this is being suggested")
+
+
 class ResolveResponse(BaseModel):
     sequence_hash: str
     length: int
@@ -36,6 +43,10 @@ class ResolveResponse(BaseModel):
     has_structure: bool
     mutation_valid: bool | None = None
     mutation_error: str | None = None
+    # Populated only when mutation_valid is False: a plain-language account of
+    # what is wrong, plus corrections the client can offer as one-click fixes.
+    mutation_explanation: str | None = None
+    mutation_suggestions: list[MutationSuggestion] = Field(default_factory=list)
 
 
 class CreateJobRequest(BaseModel):

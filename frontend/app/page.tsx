@@ -93,16 +93,55 @@ export default function Home() {
       )}
 
       {p.phase === "error" && (
-        <div className="mt-6 rounded-md border border-damaging/30 bg-damaging/5 px-4 py-3 text-sm text-damaging">
-          {p.error}
+        <div className="mt-6 rounded-md border border-damaging/30 bg-damaging/5 px-4 py-3 text-sm">
+          <div className="text-damaging">{p.error}</div>
+          {p.suggestions && p.suggestions.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {p.suggestions.map((s) => (
+                <div key={s.input} className="flex items-baseline gap-2">
+                  <button
+                    type="button"
+                    onClick={() => p.run(s.input, "")}
+                    className="shrink-0 rounded-full border border-ink/30 bg-surface-raised px-3 py-1 text-xs transition-colors hover:bg-ink hover:text-surface-raised"
+                  >
+                    {s.label}
+                  </button>
+                  <span className="text-xs text-muted">{s.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {p.resolved && p.mutation && p.resolved.mutation_valid === false && (
-        <div className="mt-6 rounded-md border border-border bg-surface-raised px-4 py-3 text-sm text-muted">
-          Mutation <span className="font-mono">{p.mutation}</span> doesn&apos;t
-          match this sequence ({p.resolved.mutation_error}). Showing the full
-          effect map instead.
+        <div className="mt-6 rounded-md border border-border bg-surface-raised px-4 py-3 text-sm">
+          <div>
+            <span className="font-mono">{p.mutation}</span> doesn&apos;t fit
+            this sequence.{" "}
+            <span className="text-muted">
+              {p.resolved.mutation_explanation ?? p.resolved.mutation_error}
+            </span>
+          </div>
+          {p.resolved.mutation_suggestions.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {p.resolved.mutation_suggestions.map((s) => (
+                <div key={s.mutation} className="flex items-baseline gap-2">
+                  <button
+                    type="button"
+                    onClick={() => p.run(p.resolved!.uniprot_id ?? "", s.mutation)}
+                    className="shrink-0 rounded-full border border-ink/30 px-3 py-1 font-mono text-xs transition-colors hover:bg-ink hover:text-surface-raised"
+                  >
+                    Try {s.mutation}
+                  </button>
+                  <span className="text-xs text-muted">{s.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-3 text-xs text-muted">
+            Showing the full effect map meanwhile.
+          </div>
         </div>
       )}
 

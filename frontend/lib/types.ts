@@ -14,6 +14,15 @@ export interface ResolveResponse {
   has_structure: boolean;
   mutation_valid: boolean | null;
   mutation_error: string | null;
+  /** Plain-language account of why the mutation didn't fit, when it didn't. */
+  mutation_explanation: string | null;
+  /** Corrections the API computed from the real sequence. */
+  mutation_suggestions: MutationSuggestion[];
+}
+
+export interface MutationSuggestion {
+  mutation: string;
+  reason: string;
 }
 
 export interface CreateJobResponse {

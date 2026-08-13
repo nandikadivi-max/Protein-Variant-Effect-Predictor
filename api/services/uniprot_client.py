@@ -79,3 +79,48 @@ class UniProtClient:
                 f"No reviewed UniProt entry found for gene '{_echo_safe(query)}'"
             )
         return results[0]["primaryAccession"]
+
+    async def suggest_similar(
+        self, query: str, organism_id: int = 9606, limit: int = 3
+    ) -> list[tuple[str, str, str]]:
+        """
+        Best-effort "did you mean" candidates for a name that resolved to
+        nothing, as (accession, gene symbol, protein name).
+
+        Deliberately a *loose* search, unlike search_by_gene_name, which is
+        exact on purpose to avoid TP53 matching TP53RK. Here recall is what
+        matters: these are only ever offered as suggestions the user picks
+        from, never resolved automatically.
+        """
+        cleaned = "".join(ch for ch in query if ch.isalnum() or ch in "- ").strip()
+        if not cleaned:
+            return []
+
+        url = f"{self._settings.uniprot_api_base}/uniprotkb/search"
+        params = {
+            "query": f"{cleaned} AND organism_id:{organism_id} AND reviewed:true",
+            "format": "json",
+            "size": str(limit),
+            "fields": "accession,gene_primary,protein_name",
+        }
+        try:
+            response = await self._client.get(url, params=params)
+            response.raise_for_status()
+            results = response.json().get("results", [])
+        except Exception:  # noqa: BLE001
+            return []  # suggestions are a nicety; never fail the request over them
+
+        out: list[tuple[str, str, str]] = []
+        for entry in results:
+            accession = entry.get("primaryAccession")
+            genes = entry.get("genes") or []
+            symbol = (genes[0].get("geneName", {}) or {}).get("value", "") if genes else ""
+            name = (
+                (entry.get("proteinDescription", {}) or {})
+                .get("recommendedName", {})
+                .get("fullName", {})
+                .get("value", "")
+            )
+            if accession:
+                out.append((accession, symbol, name))
+        return out
