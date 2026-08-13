@@ -177,11 +177,35 @@ class StructureService:
         return StructureContext.model_validate_json(self.store.read(uri))
 
     async def load_sifts_segments(self, sequence_hash: str) -> list[dict] | None:
-        """Load the stored SIFTS segments (author->UniProt map) for a protein."""
+        """
+        Load the stored SIFTS segments (author->UniProt map) for a protein.
+
+        Segments are repaired on the way out. PDBe sometimes omits the author
+        residue number at one end — 1TUP does — and maps stored before that
+        was handled carry a null pdb_end, which raises inside the range
+        comparison every consumer performs. A segment is contiguous, so the
+        end is reconstructed from the start plus the UniProt span; anything
+        still incoherent is dropped rather than allowed to mis-map residues.
+        """
         row = await self._load_row(sequence_hash)
         if row is None or not row.sifts_map_uri:
             return None
-        return json.loads(self.store.read(row.sifts_map_uri))["segments"]
+        raw = json.loads(self.store.read(row.sifts_map_uri))["segments"]
+
+        repaired: list[dict] = []
+        for seg in raw:
+            start, unp_start, unp_end = (
+                seg.get("pdb_start"),
+                seg.get("unp_start"),
+                seg.get("unp_end"),
+            )
+            if start is None or unp_start is None or unp_end is None:
+                continue
+            end = seg.get("pdb_end")
+            if end is None:
+                end = start + (unp_end - unp_start)
+            repaired.append({**seg, "pdb_start": start, "pdb_end": end})
+        return repaired
 
     async def _load_row(self, sequence_hash: str) -> Structure | None:
         result = await self.session.execute(

@@ -34,6 +34,37 @@ class SiftsSegment:
     unp_end: int
 
 
+def _segment_from_mapping(m: dict) -> "SiftsSegment | None":
+    """
+    One SIFTS mapping entry -> a segment, or None if it can't be trusted.
+
+    PDBe does not always give an author residue number at both ends: 1TUP,
+    the canonical p53 structure, comes back with a null author number for the
+    end of its mapping. Taking that at face value stored pdb_end=None, which
+    then raised inside the range comparison in _map_to_uniprot — swallowed by
+    the best-effort wrapper around feature computation, so it looked like the
+    structure simply had no features.
+
+    A SIFTS segment is contiguous by definition, so a missing end can be
+    reconstructed from the start plus the UniProt span. A missing start
+    cannot, and that segment is dropped rather than guessed at.
+    """
+    start = m.get("start", {}).get("author_residue_number")
+    end = m.get("end", {}).get("author_residue_number")
+    unp_start, unp_end = m.get("unp_start"), m.get("unp_end")
+    if start is None or unp_start is None or unp_end is None:
+        return None
+    if end is None:
+        end = start + (unp_end - unp_start)
+    return SiftsSegment(
+        chain_id=m["chain_id"],
+        pdb_start=start,
+        pdb_end=end,
+        unp_start=unp_start,
+        unp_end=unp_end,
+    )
+
+
 @dataclass(frozen=True)
 class SiftsMapping:
     pdb_id: str
@@ -96,14 +127,11 @@ class SiftsClient:
             raise SiftsNotFound(f"PDB {pdb_id} has no UniProt mapping")
 
         segments = tuple(
-            SiftsSegment(
-                chain_id=m["chain_id"],
-                pdb_start=m["start"]["author_residue_number"],
-                pdb_end=m["end"]["author_residue_number"],
-                unp_start=m["unp_start"],
-                unp_end=m["unp_end"],
+            seg
+            for seg in (
+                _segment_from_mapping(m) for m in best_data.get("mappings", [])
             )
-            for m in best_data.get("mappings", [])
+            if seg is not None
         )
         return SiftsMapping(
             pdb_id=pdb_id,
