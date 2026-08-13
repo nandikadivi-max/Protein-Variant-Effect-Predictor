@@ -27,6 +27,16 @@ class ResolveRequest(BaseModel):
     mutation: str | None = Field(None, description="e.g. 'R248Q' or 'R248Q:D281N'")
 
 
+class CachedProtein(BaseModel):
+    """A protein already scored, and therefore instant to open."""
+
+    uniprot_id: str
+    gene: str
+    name: str
+    length: int
+    sequence_hash: str
+
+
 class MutationSuggestion(BaseModel):
     """A correction the client can apply directly, with its justification."""
 

@@ -81,6 +81,19 @@ export function getResult(
   return request(`/results/${sequenceHash}${q}`);
 }
 
+export interface CachedProtein {
+  uniprot_id: string;
+  gene: string;
+  name: string;
+  length: number;
+  sequence_hash: string;
+}
+
+/** Proteins already scored, and so instant to open. */
+export function getCachedProteins(limit = 12): Promise<CachedProtein[]> {
+  return request(`/proteins/cached?limit=${limit}`);
+}
+
 export function structureFileUrl(sequenceHash: string): string {
   return `${API_BASE}/structures/${sequenceHash}/file`;
 }

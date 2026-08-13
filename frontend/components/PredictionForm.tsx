@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Term } from "@/components/Term";
+import { getCachedProteins, type CachedProtein } from "@/lib/api";
 import type { Phase } from "@/lib/usePrediction";
 
 // Each example carries a plain-English "why this one" — without it the chips
@@ -129,6 +131,79 @@ export function PredictionForm({
           </button>
         ))}
       </div>
+
+      <AlreadyScored
+        busy={busy}
+        exclude={EXAMPLES.map((e) => e.input)}
+        onPick={(accession) => {
+          onInputChange(accession);
+          onMutationChange("");
+          onSubmit(accession, "");
+        }}
+      />
     </form>
+  );
+}
+
+/**
+ * Proteins somebody has already scored, which therefore return instantly.
+ *
+ * The cache grows on its own with use, so this row fills out over time rather
+ * than staying whatever was seeded at launch. Rendered only when there is
+ * something to show beyond the examples above, and silently absent if the
+ * lookup fails — it is a convenience, not part of the flow.
+ */
+function AlreadyScored({
+  busy,
+  exclude,
+  onPick,
+}: {
+  busy: boolean;
+  exclude: string[];
+  onPick: (accession: string) => void;
+}) {
+  const [items, setItems] = useState<CachedProtein[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCachedProteins(16)
+      .then((all) => {
+        if (cancelled) return;
+        const skip = new Set(exclude);
+        setItems(all.filter((p) => !skip.has(p.uniprot_id)).slice(0, 8));
+      })
+      .catch(() => {
+        /* nothing to show; the examples above still work */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+      <span className="text-xs text-muted">
+        Already scored, so instant:
+      </span>
+      {items.map((p) => (
+        <button
+          key={p.uniprot_id}
+          type="button"
+          onClick={() => onPick(p.uniprot_id)}
+          disabled={busy}
+          title={p.name || p.uniprot_id}
+          className="group rounded-full border border-border px-3 py-1 text-xs text-muted transition-colors hover:border-ink/30 hover:text-ink disabled:opacity-40"
+        >
+          {p.gene}
+          <span className="text-muted/60 group-hover:text-muted">
+            {" · "}
+            {p.length} aa
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }

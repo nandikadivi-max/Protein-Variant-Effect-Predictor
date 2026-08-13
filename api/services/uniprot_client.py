@@ -126,6 +126,21 @@ class UniProtClient:
         )
         return [by_symbol[sym] for sym in close]
 
+    async def fetch_entry_names(
+        self, accessions: list[str]
+    ) -> dict[str, tuple[str, str]]:
+        """
+        Gene symbol and protein name for several accessions in one request,
+        as {accession: (gene, name)}. Missing entries are simply absent.
+        """
+        if not accessions:
+            return {}
+        query = " OR ".join(f"accession:{a}" for a in accessions)
+        return {
+            acc: (gene, name)
+            for acc, gene, name in await self._search(query, len(accessions))
+        }
+
     async def _search(self, query: str, limit: int) -> list[tuple[str, str, str]]:
         """Run one UniProt search, returning (accession, symbol, protein name)."""
         url = f"{self._settings.uniprot_api_base}/uniprotkb/search"

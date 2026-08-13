@@ -2,13 +2,48 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from api.deps import get_resolver
+from api.deps import get_protein_catalog, get_resolver
+from api.services.protein_catalog import ProteinCatalog
 from api.services.protein_resolver import ProteinNotFound, ProteinResolver
-from contracts.schemas import MutationSuggestion, ResolveRequest, ResolveResponse
+from config import get_settings
+from contracts.schemas import (
+    CachedProtein,
+    MutationSuggestion,
+    ResolveRequest,
+    ResolveResponse,
+)
 from domain.derive import Variant, validate_against_sequence
 from domain.repair import explain_and_suggest, explain_parse_failure
 
 router = APIRouter()
+
+
+@router.get("/proteins/cached", response_model=list[CachedProtein])
+async def cached_proteins(
+    limit: int = 12,
+    catalog: ProteinCatalog = Depends(get_protein_catalog),
+) -> list[CachedProtein]:
+    """
+    Proteins already scored, and so instant to open.
+
+    The set grows by itself as people use the tool. Pasted sequences are
+    excluded — see ProteinCatalog for why that is a rule rather than a
+    detail.
+    """
+    entries = await catalog.scored(
+        model_id=get_settings().default_model_id,
+        limit=max(1, min(limit, 24)),
+    )
+    return [
+        CachedProtein(
+            uniprot_id=e.uniprot_id,
+            gene=e.gene,
+            name=e.name,
+            length=e.length,
+            sequence_hash=e.sequence_hash,
+        )
+        for e in entries
+    ]
 
 
 @router.post("/proteins/resolve", response_model=ResolveResponse)

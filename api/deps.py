@@ -16,6 +16,7 @@ from api.services.annotation_client import AnnotationClient
 from api.services.annotation_service import AnnotationService
 from api.services.job_dispatcher import build_dispatcher
 from api.services.job_service import JobService
+from api.services.protein_catalog import ProteinCatalog
 from api.services.protein_resolver import ProteinResolver
 from api.services.results_service import ResultsService
 from api.services.sifts_client import SiftsClient
@@ -96,6 +97,16 @@ async def get_results_service(
         )
     finally:
         await annotation_client.aclose()
+
+
+async def get_protein_catalog(
+    session: AsyncSession = Depends(get_db),
+) -> AsyncIterator[ProteinCatalog]:
+    client = UniProtClient()
+    try:
+        yield ProteinCatalog(session=session, uniprot=client)
+    finally:
+        await client.aclose()
 
 
 async def get_structure_service(
