@@ -65,6 +65,46 @@ def _segment_from_mapping(m: dict) -> "SiftsSegment | None":
     )
 
 
+def _segments_from_mappings(mappings: list[dict]) -> tuple["SiftsSegment", ...]:
+    """
+    Build the author->UniProt segments for every chain PDBe reports.
+
+    Chains of the same protein are numbered alike, which matters because PDBe
+    often reports the author numbering for only one of them. In 1TUP the p53
+    trimer maps chains A, B and C to UniProt 94-312, but only chain A carries
+    an author residue number — so taking the mappings at face value colours
+    one chain and leaves two identical copies blank, which reads as a bug.
+    Any chain whose numbering is stated establishes the offset for the rest.
+    """
+    parsed = [(m, _segment_from_mapping(m)) for m in mappings]
+    known = [seg for _, seg in parsed if seg is not None]
+
+    # All chains here describe the same protein, so one offset covers them.
+    offset = (known[0].unp_start - known[0].pdb_start) if known else None
+
+    segments: list[SiftsSegment] = []
+    for mapping, seg in parsed:
+        if seg is not None:
+            segments.append(seg)
+            continue
+        # Reconstructable only if the UniProt span is known and some sibling
+        # chain told us how this entry numbers its residues.
+        unp_start, unp_end = mapping.get("unp_start"), mapping.get("unp_end")
+        chain_id = mapping.get("chain_id")
+        if offset is None or unp_start is None or unp_end is None or not chain_id:
+            continue
+        segments.append(
+            SiftsSegment(
+                chain_id=chain_id,
+                pdb_start=unp_start - offset,
+                pdb_end=unp_end - offset,
+                unp_start=unp_start,
+                unp_end=unp_end,
+            )
+        )
+    return tuple(segments)
+
+
 @dataclass(frozen=True)
 class SiftsMapping:
     pdb_id: str
@@ -126,13 +166,7 @@ class SiftsClient:
         if best_acc is None or best_data is None:
             raise SiftsNotFound(f"PDB {pdb_id} has no UniProt mapping")
 
-        segments = tuple(
-            seg
-            for seg in (
-                _segment_from_mapping(m) for m in best_data.get("mappings", [])
-            )
-            if seg is not None
-        )
+        segments = _segments_from_mappings(best_data.get("mappings", []))
         return SiftsMapping(
             pdb_id=pdb_id,
             uniprot_accession=best_acc,

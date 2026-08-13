@@ -24,20 +24,24 @@ const THREE_TO_ONE: Record<string, string> = {
 };
 
 /**
- * Map label_seq_id -> one-letter residue code for the loaded model.
+ * Residues of the loaded model, located the same way the colour theme locates
+ * them: by author numbering, mapped through SIFTS to UniProt position.
  *
- * The residue table exposes label_seq_id (the impact colour theme relies on
- * it) but not always the residue name, so fall back to reading the name off
- * the residue's first atom. Returns an empty map if neither is available,
- * which makes the caller mark nothing rather than mark the wrong thing.
+ * Using label_seq_id here instead would look right on AlphaFold and be wrong
+ * on a cropped experimental entry. In 1TUP, label_seq_id 175 is UniProt 268 —
+ * an asparagine — so a guard checking "is position 175 an arginine?" would be
+ * asking about the wrong residue entirely.
  */
-function residueCodesBySeqId(model: any): Map<number, string> {
-  const out = new Map<number, string>();
+function uniprotToAuthor(
+  model: any,
+  segments: SiftsSegment[],
+): Map<number, { authSeqId: number; code: string }> {
+  const out = new Map<number, { authSeqId: number; code: string }>();
   const h = model?.atomicHierarchy;
   const residues = h?.residues;
-  if (!residues?.label_seq_id) return out;
+  if (!residues?.auth_seq_id) return out;
 
-  const rowCount = residues._rowCount ?? residues.label_seq_id.rowCount ?? 0;
+  const rowCount = residues._rowCount ?? residues.auth_seq_id.rowCount ?? 0;
   const offsets = h?.residueAtomSegments?.offsets;
   const readName = (i: number): string | undefined => {
     if (residues.label_comp_id) return residues.label_comp_id.value(i);
@@ -50,25 +54,42 @@ function residueCodesBySeqId(model: any): Map<number, string> {
   for (let i = 0; i < rowCount; i++) {
     const name = readName(i);
     if (name === undefined) return new Map(); // no reliable source; guard off
-    const one = THREE_TO_ONE[String(name).toUpperCase()];
-    if (one) out.set(residues.label_seq_id.value(i), one);
+    const code = THREE_TO_ONE[String(name).toUpperCase()];
+    if (!code) continue;
+
+    const authSeqId = residues.auth_seq_id.value(i);
+    let unp = authSeqId; // AlphaFold: author numbering already IS UniProt
+    if (segments.length > 0) {
+      unp = -1;
+      for (const seg of segments) {
+        if (authSeqId >= seg.pdb_start && authSeqId <= seg.pdb_end) {
+          unp = authSeqId + (seg.unp_start - seg.pdb_start);
+          break;
+        }
+      }
+    }
+    if (unp > 0 && !out.has(unp)) out.set(unp, { authSeqId, code });
   }
   return out;
 }
 
-/** Positions whose residue in the loaded structure really is the expected
+/** Author residue numbers to mark: those whose residue really is the expected
  *  wildtype. See the guard's rationale in the marker effect below. */
-function verifiedPositions(structureData: any, mutation: string): number[] {
-  const codes = residueCodesBySeqId(structureData?.models?.[0]);
-  if (codes.size === 0) return [];
+function verifiedAuthorPositions(
+  structureData: any,
+  mutation: string,
+  segments: SiftsSegment[],
+): number[] {
+  const byUniProt = uniprotToAuthor(structureData?.models?.[0], segments);
+  if (byUniProt.size === 0) return [];
 
   const out: number[] = [];
   for (const part of mutation.split(":")) {
     const m = /^([A-Z])(\d+)([A-Z])$/.exec(part.trim().toUpperCase());
     if (!m) continue;
     const [, wt, posStr] = m;
-    const pos = parseInt(posStr, 10);
-    if (codes.get(pos) === wt) out.push(pos);
+    const hit = byUniProt.get(parseInt(posStr, 10));
+    if (hit && hit.code === wt) out.push(hit.authSeqId);
   }
   return out;
 }
@@ -84,6 +105,9 @@ export function StructureViewer({
   const parent = useRef<HTMLDivElement>(null);
   const pluginRef = useRef<any>(null);
   const structureRef = useRef<any>(null);
+  // Shared with the marker effect, which must locate residues the same way
+  // the colour theme does.
+  const segmentsRef = useRef<SiftsSegment[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Gates the marker effect below: the structure must exist before anything
   // can select a residue in it.
@@ -142,6 +166,7 @@ export function StructureViewer({
         }
         if (disposed) return;
 
+        segmentsRef.current = segments;
         const provider = makeImpactColorThemeProvider(perResidueImpact, segments);
         try {
           plugin.representation.structure.themes.colorThemeRegistry.add(
@@ -214,7 +239,7 @@ export function StructureViewer({
         const structureData =
           structure.data ?? structure.cell?.obj?.data ?? null;
         const positions = mutation
-          ? verifiedPositions(structureData, mutation)
+          ? verifiedAuthorPositions(structureData, mutation, segmentsRef.current)
           : [];
 
         // An empty selection makes tryCreateComponentFromExpression remove the
@@ -222,7 +247,7 @@ export function StructureViewer({
         const expression = MS.struct.generator.atomGroups({
           "residue-test": MS.core.set.has([
             MS.set(...positions),
-            MS.struct.atomProperty.macromolecular.label_seq_id(),
+            MS.struct.atomProperty.macromolecular.auth_seq_id(),
           ]),
         });
 

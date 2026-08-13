@@ -50,3 +50,46 @@ def test_unusable_mappings_are_dropped_not_guessed():
     assert _segment_from_mapping(mapping(None, 312, 94, 312)) is None
     assert _segment_from_mapping(mapping(94, 312, None, 312)) is None
     assert _segment_from_mapping(mapping(94, 312, 94, None)) is None
+
+
+def test_sibling_chains_inherit_a_known_offset():
+    """
+    1TUP is a p53 trimer: PDBe maps chains A, B and C to UniProt 94-312, but
+    reports an author residue number only for chain A. Dropping the other two
+    leaves a structure where one chain is coloured and two identical copies
+    are blank, which reads as a bug.
+    """
+    from api.services.sifts_client import _segments_from_mappings
+
+    segs = _segments_from_mappings([
+        mapping(94, None, 94, 312, chain="A"),
+        mapping(None, None, 94, 312, chain="B"),
+        mapping(None, None, 94, 312, chain="C"),
+    ])
+    assert {s.chain_id for s in segs} == {"A", "B", "C"}
+    for s in segs:
+        assert (s.pdb_start, s.pdb_end) == (94, 312)
+        assert s.unp_start - s.pdb_start == 0
+
+
+def test_sibling_reconstruction_carries_a_real_offset():
+    """When the known chain is offset, the inferred ones must match it."""
+    from api.services.sifts_client import _segments_from_mappings
+
+    segs = _segments_from_mappings([
+        mapping(1, None, 94, 312, chain="A"),     # offset +93
+        mapping(None, None, 94, 312, chain="B"),
+    ])
+    by_chain = {s.chain_id: s for s in segs}
+    assert by_chain["B"].pdb_start == 1 and by_chain["B"].pdb_end == 219
+    assert by_chain["B"].unp_start - by_chain["B"].pdb_start == 93
+
+
+def test_nothing_is_invented_when_no_chain_is_numbered():
+    """With no anchor at all, guessing would mis-map every residue."""
+    from api.services.sifts_client import _segments_from_mappings
+
+    assert _segments_from_mappings([
+        mapping(None, None, 94, 312, chain="A"),
+        mapping(None, None, 94, 312, chain="B"),
+    ]) == ()
