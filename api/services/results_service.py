@@ -21,6 +21,7 @@ from db.models import Protein, ScoreMatrix
 from domain.derive import (
     Variant,
     full_effect_map,
+    llr_percentile,
     per_residue_impact,
     score_variant,
     validate_against_sequence,
@@ -43,6 +44,23 @@ def classify_llr(llr: float) -> EffectLabel:
     if llr > TOLERATED_LLR_THRESHOLD:
         return EffectLabel.LIKELY_TOLERATED
     return EffectLabel.UNCERTAIN
+
+
+def _percentile_for(
+    variant: Variant, effect_map: np.ndarray, sequence: str, llr: float
+) -> float | None:
+    """
+    Rank a variant against every single substitution in this protein.
+
+    Only meaningful for single substitutions. `score_variant` SUMS the LLRs of
+    a multi-substitution variant, so the result is not drawn from the
+    single-substitution distribution at all — ranking it there would report
+    a near-100th percentile for any multi-sub variant regardless of severity.
+    Return None rather than a confidently wrong number.
+    """
+    if len(variant.substitutions) != 1:
+        return None
+    return llr_percentile(effect_map, sequence, llr)
 
 
 @dataclass(frozen=True)
@@ -98,13 +116,13 @@ class ResultsService:
         if loaded is None:
             return None
 
-        single: SingleScore | None = None
+        variant = None
+        llr = None
         annotation = None
         if mutation:
             variant = Variant.parse(mutation)
             validate_against_sequence(variant, loaded.sequence)
             llr = score_variant(loaded.matrix, variant)
-            single = SingleScore(mutation=str(variant), llr=llr, label=classify_llr(llr))
 
             # External variant annotation (best-effort). Never fail the result
             # over an annotation lookup, and skip it for FASTA-only proteins.
@@ -118,6 +136,20 @@ class ResultsService:
 
         effect_map = full_effect_map(loaded.matrix, loaded.sequence)
         impact = per_residue_impact(loaded.matrix, loaded.sequence, reduce="mean")
+
+        # Built here rather than inside the block above so the percentile can
+        # reuse effect_map instead of recomputing it. Parsing and validation
+        # still happen first, so a bad mutation still raises before any of this.
+        single: SingleScore | None = None
+        if variant is not None and llr is not None:
+            single = SingleScore(
+                mutation=str(variant),
+                llr=llr,
+                label=classify_llr(llr),
+                percentile=_percentile_for(
+                    variant, effect_map, loaded.sequence, llr
+                ),
+            )
 
         structure = (
             self.structures.load_features(sequence_hash) if self.structures else None

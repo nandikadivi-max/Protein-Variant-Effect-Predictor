@@ -91,6 +91,22 @@ def full_effect_map(M: np.ndarray, wt_sequence: str) -> np.ndarray:
     return M - wt_log_probs  # broadcast -> (L, 20)
 
 
+def _non_wildtype_mask(wt_sequence: str) -> np.ndarray:
+    """
+    (L, 20) boolean mask that is False at each position's own wildtype column.
+
+    Those entries are the residue scored against itself, so `full_effect_map`
+    makes them exactly 0.0. They are not substitutions and including them
+    skews any aggregate: L zeros sitting at the top of an otherwise negative
+    distribution look like real, perfectly-tolerated changes.
+    """
+    L = len(wt_sequence)
+    wt_indices = np.array([AA_INDEX[aa] for aa in wt_sequence])
+    mask = np.ones((L, 20), dtype=bool)
+    mask[np.arange(L), wt_indices] = False
+    return mask
+
+
 def per_residue_impact(M: np.ndarray, wt_sequence: str, reduce: str = "mean") -> np.ndarray:
     """
     (L,) array summarizing mutational tolerance per position, for 3D
@@ -98,14 +114,42 @@ def per_residue_impact(M: np.ndarray, wt_sequence: str, reduce: str = "mean") ->
     (more negative => less tolerant position). 'min' = worst-case LLR.
     """
     effect_map = full_effect_map(M, wt_sequence)
-    L = len(wt_sequence)
-    wt_indices = np.array([AA_INDEX[aa] for aa in wt_sequence])
-    mask = np.ones((L, 20), dtype=bool)
-    mask[np.arange(L), wt_indices] = False  # exclude the wildtype-vs-itself zero entry
-
-    masked = np.where(mask, effect_map, np.nan)
+    masked = np.where(_non_wildtype_mask(wt_sequence), effect_map, np.nan)
     if reduce == "mean":
         return np.nanmean(masked, axis=1)
     if reduce == "min":
         return np.nanmin(masked, axis=1)
     raise ValueError(f"Unknown reduce mode: {reduce}")
+
+
+def substitution_llrs(effect_map: np.ndarray, wt_sequence: str) -> np.ndarray:
+    """
+    Flat array of every real single substitution's LLR, length 19*L.
+
+    The wildtype-vs-itself entries are dropped, so this is the population a
+    single mutation should be ranked against.
+    """
+    return effect_map[_non_wildtype_mask(wt_sequence)]
+
+
+def llr_percentile(effect_map: np.ndarray, wt_sequence: str, llr: float) -> float:
+    """
+    Where `llr` falls among every possible single substitution in this
+    protein, as 0-100 where higher means more damaging.
+
+    LLR is more negative for more disruptive changes, so the percentile
+    counts how much of the population this mutation is *below*. Ties are
+    split (mid-rank), which keeps a mutation from being reported as more
+    extreme than identically-scoring ones.
+
+    Note this is protein-relative: in a highly constrained protein even a
+    mild substitution can land high, and callers should say so.
+    """
+    pool = substitution_llrs(effect_map, wt_sequence)
+    if pool.size == 0:
+        raise ValueError("Cannot rank against an empty substitution pool")
+    # Entries ABOVE this LLR are the less-damaging ones, so their share is
+    # exactly "more damaging than X% of substitutions".
+    less_damaging = float(np.count_nonzero(pool > llr))
+    ties = float(np.count_nonzero(pool == llr))
+    return 100.0 * (less_damaging + 0.5 * ties) / float(pool.size)
