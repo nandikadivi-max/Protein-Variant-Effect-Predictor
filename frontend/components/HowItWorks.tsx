@@ -123,8 +123,13 @@ export function HowItWorks() {
               Reading the notation:{" "}
               <span className="font-mono text-ink">R175H</span> means position
               175 normally holds arginine (R) and has been replaced with
-              histidine (H). Everything on this page is a research tool, not a
-              clinical one.
+              histidine (H). Positions here follow UniProt&apos;s canonical
+              numbering, which counts the starting methionine. Clinical names
+              often count the mature protein instead, after that methionine is
+              removed, so they can sit one lower: sickle-cell haemoglobin is
+              famously <span className="font-mono">E6V</span> but is{" "}
+              <span className="font-mono text-ink">E7V</span> here. Everything
+              on this page is a research tool, not a clinical one.
             </p>
           </motion.div>
         )}

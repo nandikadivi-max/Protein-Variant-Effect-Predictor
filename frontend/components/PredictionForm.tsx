@@ -14,17 +14,23 @@ const EXAMPLES = [
     input: "P04637",
     mutation: "R175H",
   },
+  // Positions are UniProt canonical, which counts the initiator methionine.
+  // The familiar clinical names for these two (HBB E6V, SOD1 A4V) number the
+  // MATURE protein, after that methionine is cleaved, so both are one lower
+  // than the value this app needs. Using the clinical numbering here returns
+  // a reference mismatch, because position 6 of HBB is proline and position
+  // 4 of SOD1 is lysine.
   {
-    label: "HBB E6V",
+    label: "HBB E7V",
     note: "sickle-cell",
     input: "P68871",
-    mutation: "E6V",
+    mutation: "E7V",
   },
   {
-    label: "SOD1 A4V",
+    label: "SOD1 A5V",
     note: "ALS",
     input: "P00441",
-    mutation: "A4V",
+    mutation: "A5V",
   },
   { label: "Insulin", note: "small & fast", input: "P01308", mutation: "" },
 ];

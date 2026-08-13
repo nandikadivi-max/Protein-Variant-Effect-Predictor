@@ -103,6 +103,7 @@ export default function Home() {
               <StructureViewer
                 fileUrl={structureFileUrl(p.result.sequence_hash)}
                 perResidueImpact={p.result.per_residue_impact}
+                mutation={single?.mutation ?? null}
               />
             </Reveal>
           )}
