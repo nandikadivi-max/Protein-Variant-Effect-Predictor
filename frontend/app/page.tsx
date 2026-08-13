@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import { EffectHeatmap } from "@/components/EffectHeatmap";
@@ -10,6 +10,7 @@ import { SingleScoreCard } from "@/components/SingleScoreCard";
 import { StructureTrack } from "@/components/StructureTrack";
 import { Term } from "@/components/Term";
 import { structureFileUrl } from "@/lib/api";
+import { parseShareUrl, writeShareUrl } from "@/lib/urlState";
 import { usePrediction } from "@/lib/usePrediction";
 
 // Mol* is client-only (WebGL, no SSR).
@@ -33,6 +34,46 @@ const PHASE_TEXT: Record<string, string> = {
 
 export default function Home() {
   const p = usePrediction();
+  const [input, setInput] = useState("");
+  const [mutation, setMutation] = useState("");
+
+  // Run whatever a shared link asked for, once.
+  //
+  // The latch is load-bearing, not defensive: reactStrictMode remounts every
+  // component in development, so a bare mount effect fires twice, and
+  // usePrediction has no in-flight guard of its own — the UI is normally
+  // protected only because the submit button and example chips disable
+  // themselves while busy, and this path bypasses both.
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoRan.current) return;
+    autoRan.current = true;
+
+    const shared = parseShareUrl(window.location.search);
+    if (!shared) return;
+    setInput(shared.params.input);
+    setMutation(shared.params.mutation);
+    if (shared.autoRun) {
+      p.run(shared.params.input, shared.params.mutation);
+    }
+    // p.run is stable (useCallback with no deps) and this must run exactly
+    // once regardless.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const submit = (nextInput: string, nextMutation: string) => {
+    writeShareUrl({ input: nextInput, mutation: nextMutation });
+    p.run(nextInput, nextMutation);
+  };
+
+  // A cell click changes which mutation is on screen without going through the
+  // form, so the URL has to follow it too or a shared link would point at
+  // whatever was last typed rather than what the page is showing.
+  const selectCell = (clicked: string) => {
+    setMutation(clicked);
+    writeShareUrl({ input, mutation: clicked });
+    p.rescore(clicked);
+  };
 
   const single = p.result?.single ?? null;
   // Memoised because parseMutation returns a fresh object on every render, and
@@ -73,7 +114,14 @@ export default function Home() {
       </header>
 
       <section className="rounded-lg border border-border bg-surface-raised p-5">
-        <PredictionForm phase={p.phase} onSubmit={p.run} />
+        <PredictionForm
+          phase={p.phase}
+          onSubmit={submit}
+          input={input}
+          mutation={mutation}
+          onInputChange={setInput}
+          onMutationChange={setMutation}
+        />
       </section>
 
       {busy && (
@@ -101,7 +149,11 @@ export default function Home() {
                 <div key={s.input} className="flex items-baseline gap-2">
                   <button
                     type="button"
-                    onClick={() => p.run(s.input, "")}
+                    onClick={() => {
+                      setInput(s.input);
+                      setMutation("");
+                      submit(s.input, "");
+                    }}
                     className="shrink-0 rounded-full border border-ink/30 bg-surface-raised px-3 py-1 text-xs transition-colors hover:bg-ink hover:text-surface-raised"
                   >
                     {s.label}
@@ -129,7 +181,11 @@ export default function Home() {
                 <div key={s.mutation} className="flex items-baseline gap-2">
                   <button
                     type="button"
-                    onClick={() => p.run(p.resolved!.uniprot_id ?? "", s.mutation)}
+                    onClick={() => {
+                      const next = p.resolved!.uniprot_id ?? input;
+                      setMutation(s.mutation);
+                      submit(next, s.mutation);
+                    }}
                     className="shrink-0 rounded-full border border-ink/30 px-3 py-1 font-mono text-xs transition-colors hover:bg-ink hover:text-surface-raised"
                   >
                     Try {s.mutation}
@@ -171,7 +227,7 @@ export default function Home() {
             <EffectHeatmap
               effectMap={p.result.effect_map}
               highlight={highlight}
-              onSelectCell={p.rescore}
+              onSelectCell={selectCell}
             />
           </Reveal>
           {p.result.structure && (

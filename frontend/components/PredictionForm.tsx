@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Term } from "@/components/Term";
 import type { Phase } from "@/lib/usePrediction";
 
@@ -38,11 +37,24 @@ const EXAMPLES = [
 interface Props {
   phase: Phase;
   onSubmit: (input: string, mutation: string) => void;
+  // Controlled from the page rather than held here, so a prediction started
+  // from a shared URL can fill these boxes. Keeping the state local left both
+  // fields blank while such a run was in flight, and a lazy useState
+  // initialiser reading the URL would differ between server and client render.
+  input: string;
+  mutation: string;
+  onInputChange: (value: string) => void;
+  onMutationChange: (value: string) => void;
 }
 
-export function PredictionForm({ phase, onSubmit }: Props) {
-  const [input, setInput] = useState("");
-  const [mutation, setMutation] = useState("");
+export function PredictionForm({
+  phase,
+  onSubmit,
+  input,
+  mutation,
+  onInputChange,
+  onMutationChange,
+}: Props) {
   const busy = phase !== "idle" && phase !== "done" && phase !== "error";
 
   return (
@@ -65,7 +77,7 @@ export function PredictionForm({ phase, onSubmit }: Props) {
           </label>
           <input
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => onInputChange(e.target.value)}
             placeholder="P04637"
             spellCheck={false}
             className="w-full rounded-md border border-border bg-surface-raised px-3 py-2 font-mono text-sm outline-none focus:border-ink/30 focus:ring-2 focus:ring-ink/5"
@@ -80,7 +92,7 @@ export function PredictionForm({ phase, onSubmit }: Props) {
           </label>
           <input
             value={mutation}
-            onChange={(e) => setMutation(e.target.value)}
+            onChange={(e) => onMutationChange(e.target.value)}
             placeholder="R175H"
             spellCheck={false}
             className="w-full rounded-md border border-border bg-surface-raised px-3 py-2 font-mono text-sm outline-none focus:border-ink/30 focus:ring-2 focus:ring-ink/5 sm:w-36"
@@ -102,8 +114,8 @@ export function PredictionForm({ phase, onSubmit }: Props) {
             key={ex.label}
             type="button"
             onClick={() => {
-              setInput(ex.input);
-              setMutation(ex.mutation);
+              onInputChange(ex.input);
+              onMutationChange(ex.mutation);
               onSubmit(ex.input, ex.mutation);
             }}
             disabled={busy}
