@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import { EffectHeatmap } from "@/components/EffectHeatmap";
@@ -34,7 +35,14 @@ export default function Home() {
   const p = usePrediction();
 
   const single = p.result?.single ?? null;
-  const highlight = single ? parseMutation(single.mutation) : null;
+  // Memoised because parseMutation returns a fresh object on every render, and
+  // an unstable `highlight` prop re-fires the heatmap's draw-and-scroll effect.
+  // Harmless while nothing re-rendered after a result landed; not harmless once
+  // clicking a cell updates state.
+  const highlight = useMemo(
+    () => (single ? parseMutation(single.mutation) : null),
+    [single],
+  );
   const busy = ["resolving", "queued", "running"].includes(p.phase);
 
   return (
@@ -124,6 +132,7 @@ export default function Home() {
             <EffectHeatmap
               effectMap={p.result.effect_map}
               highlight={highlight}
+              onSelectCell={p.rescore}
             />
           </Reveal>
           {p.result.structure && (

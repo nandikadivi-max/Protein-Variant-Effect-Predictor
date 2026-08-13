@@ -22,9 +22,11 @@ interface Hover {
 interface Props {
   effectMap: number[][]; // L x 20
   highlight?: { pos: number; aa: string } | null;
+  /** Called with a mutation string like "R175H" when a cell is clicked. */
+  onSelectCell?: (mutation: string) => void;
 }
 
-export function EffectHeatmap({ effectMap, highlight }: Props) {
+export function EffectHeatmap({ effectMap, highlight, onSelectCell }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -107,35 +109,59 @@ export function EffectHeatmap({ effectMap, highlight }: Props) {
       }
     }
 
-    // Bring the queried mutation into view — deferred to the next frame so the
-    // canvas has its final width and the container is actually scrollable.
-    // Center the queried mutation. Done here, right after the canvas is sized,
-    // so reading the container forces a reflow and the scroll actually applies.
+    // Bring the queried mutation into view, but only if it isn't already.
+    // Done here, right after the canvas is sized, so reading the container
+    // forces a reflow and the scroll actually applies.
+    //
+    // Scroll-INTO-view rather than always-centre: a cell the user just clicked
+    // is by definition on screen, so an unconditional recentre would yank the
+    // grid out from under the pointer and leave the tooltip describing a cell
+    // that is no longer there. A mutation typed into the form is usually off
+    // screen and still gets centred exactly as before.
     const container = scrollRef.current;
     if (highlight && container) {
-      const target = (highlight.pos - 1) * CELL_W - container.clientWidth / 2;
-      container.scrollLeft = Math.max(0, target);
+      const cellLeft = (highlight.pos - 1) * CELL_W;
+      const viewLeft = container.scrollLeft;
+      const viewRight = viewLeft + container.clientWidth;
+      const visible = cellLeft >= viewLeft && cellLeft + CELL_W <= viewRight;
+      if (!visible) {
+        container.scrollLeft = Math.max(0, cellLeft - container.clientWidth / 2);
+      }
     }
   }, [effectMap, highlight, L]);
 
-  function onMove(e: React.MouseEvent<HTMLCanvasElement>) {
+  /** Pixel -> cell, shared by hover and click so they can never disagree. */
+  function cellAt(e: React.MouseEvent<HTMLCanvasElement>): Hover | null {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top - RULER_H;
     const pos = Math.floor(x / CELL_W);
     const aa = Math.floor(y / CELL_H);
-    if (pos < 0 || pos >= L || aa < 0 || aa >= 20) {
-      setHover(null);
-      return;
-    }
-    setHover({
+    if (pos < 0 || pos >= L || aa < 0 || aa >= 20) return null;
+    return {
       x,
       y: y + RULER_H,
       pos: pos + 1,
       aa: AA_ORDER[aa],
       wt: wt[pos],
       llr: effectMap[pos][aa],
-    });
+    };
+  }
+
+  function onMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    setHover(cellAt(e));
+  }
+
+  function onClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (!onSelectCell) return;
+    const cell = cellAt(e);
+    if (!cell) return;
+    // The wildtype cell is the residue against itself. The server would happily
+    // accept it — Variant.parse("R175R") is valid, scores 0.0, and classifies
+    // as tolerated — producing a nonsense "R175R · Likely tolerated" card. So
+    // it is refused here.
+    if (cell.aa === cell.wt) return;
+    onSelectCell(`${cell.wt}${cell.pos}${cell.aa}`);
   }
 
   return (
@@ -154,6 +180,13 @@ export function EffectHeatmap({ effectMap, highlight }: Props) {
             column is a position, each row an amino acid; dots mark the original
             letter. Solid red columns are positions that tolerate almost
             nothing.
+            {onSelectCell && (
+              <>
+                {" "}
+                <span className="text-ink">Click any cell</span> to score that
+                substitution.
+              </>
+            )}
           </p>
         </div>
         <Legend />
@@ -176,6 +209,16 @@ export function EffectHeatmap({ effectMap, highlight }: Props) {
             ref={canvasRef}
             onMouseMove={onMove}
             onMouseLeave={() => setHover(null)}
+            onClick={onClick}
+            // Only advertise clickability over a cell that would actually do
+            // something: not over the wildtype cell, and not at all when no
+            // handler is wired up.
+            style={{
+              cursor:
+                onSelectCell && hover && hover.aa !== hover.wt
+                  ? "pointer"
+                  : "default",
+            }}
           />
           {hover && (
             <div
