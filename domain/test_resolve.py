@@ -89,3 +89,41 @@ def test_classify_input_still_accepts_real_inputs():
     assert classify_input("  P04637  ") == "uniprot_id"
     assert classify_input("tp53") == "name"
     assert classify_input("1CRN") == "pdb_id"
+
+
+UBQ = "MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG"
+
+
+def test_classify_input_recognises_fasta_with_a_header():
+    """
+    Every FASTA file from a database has a '>' header. Testing the raw text
+    against the residue alphabet rejected all of them, because '>' and the
+    '|' separators are not residues, so real FASTA fell through to gene
+    search and came back "no such gene".
+    """
+    assert classify_input(">sp|P0CG48|UBC_HUMAN Polyubiquitin-C\n" + UBQ) == "fasta"
+    assert classify_input(">x\n" + UBQ) == "fasta"
+    assert classify_input(UBQ) == "fasta"
+
+
+def test_classify_input_handles_wrapped_and_windows_line_endings():
+    wrapped = "\n".join(UBQ[i : i + 60] for i in range(0, len(UBQ), 60))
+    assert classify_input(">x\n" + wrapped) == "fasta"
+    assert classify_input(">x\r\n" + wrapped.replace("\n", "\r\n")) == "fasta"
+
+
+def test_clean_fasta_strips_header_whitespace_and_stops():
+    from domain.resolve import clean_fasta
+
+    wrapped = "\n".join(UBQ[i : i + 60] for i in range(0, len(UBQ), 60))
+    assert clean_fasta(">sp|X|Y desc\n" + wrapped + "*") == UBQ
+    assert clean_fasta(UBQ.lower()) == UBQ
+    # Internal spaces (common when copying from a paper) are removed too.
+    assert clean_fasta("MQIF VKTL\nTGKT") == "MQIFVKTLTGKT"
+
+
+def test_short_sequences_are_still_treated_as_gene_names():
+    """'MQIFVKTLTG' is a valid peptide but far more likely a gene query, and
+    a bare 4-letter run must not be swallowed as a sequence."""
+    assert classify_input("MQIFVKTLTG") == "name"
+    assert classify_input("TP53") == "name"

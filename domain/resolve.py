@@ -18,6 +18,12 @@ UNIPROT_PATTERN = re.compile(
 )
 PDB_ID_PATTERN = re.compile(r"^[0-9][A-Za-z0-9]{3}$")
 
+# Letters that may appear in a pasted sequence body. X (unknown residue) and
+# * (stop) are tolerated at classification time so the paste is recognised as
+# a sequence; validate_sequence is what actually rejects non-canonical
+# residues, with a message that names them.
+FASTA_ALPHABET = "ACDEFGHIKLMNPQRSTVWYX*"
+
 
 @dataclass(frozen=True)
 class StructureRef:
@@ -55,15 +61,35 @@ def classify_input(raw_input: str) -> str:
         return "uniprot_id"
     if PDB_ID_PATTERN.match(stripped) and any(c.isdigit() for c in stripped[:1]):
         return "pdb_id"
-    if len(stripped) > 20 and set(stripped.upper()) <= set("ACDEFGHIKLMNPQRSTVWYX*\n "):
+
+    # A '>' header is unambiguous FASTA, and it is what you get from every
+    # database download. Testing the raw text against the residue alphabet
+    # missed all of those, because '>' and the '|' separators in the header
+    # aren't residues — so a real FASTA file fell through to gene search and
+    # came back "no such gene". Classify on the sequence body instead, which
+    # also lets a genuinely malformed paste fail with a residue error rather
+    # than a misleading lookup failure.
+    if stripped.startswith(">"):
+        return "fasta"
+    body = _sequence_body(stripped)
+    if len(body) > 20 and set(body) <= set(FASTA_ALPHABET):
         return "fasta"
     return "name"
 
 
+def _sequence_body(raw: str) -> str:
+    """
+    The residue letters of a pasted block: header lines dropped, all
+    whitespace removed, uppercased. Shared by classification and cleaning so
+    the two can never disagree about what counts as the sequence.
+    """
+    lines = [ln for ln in raw.strip().splitlines() if not ln.lstrip().startswith(">")]
+    return "".join("".join(ln.split()) for ln in lines).upper()
+
+
 def clean_fasta(raw: str) -> str:
-    """Strip a '>' header line and whitespace from a pasted FASTA block."""
-    lines = [line for line in raw.strip().splitlines() if not line.startswith(">")]
-    return "".join(lines).strip().upper().replace("*", "")
+    """Strip '>' header lines, whitespace and stop codons from a pasted block."""
+    return _sequence_body(raw).replace("*", "")
 
 
 def build_resolved_protein(
