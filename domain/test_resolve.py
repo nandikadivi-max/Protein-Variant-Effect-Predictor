@@ -69,3 +69,23 @@ def test_build_resolved_protein_happy_path():
     )
     assert protein.sequence == "MEEPQSD"
     assert protein.sequence_hash == sequence_hash("MEEPQSD")
+
+
+def test_classify_input_rejects_blank():
+    """
+    Blank input used to fall through to 'name', and a UniProt gene search for
+    the empty string is a valid query that returns an arbitrary first hit — so
+    an empty form resolved to a real but completely unrelated protein.
+    """
+    import pytest
+
+    for blank in ("", "   ", "\n", "\t  \n"):
+        with pytest.raises(ValueError, match="Enter a protein"):
+            classify_input(blank)
+
+
+def test_classify_input_still_accepts_real_inputs():
+    """Guards the blank check against over-reaching."""
+    assert classify_input("  P04637  ") == "uniprot_id"
+    assert classify_input("tp53") == "name"
+    assert classify_input("1CRN") == "pdb_id"

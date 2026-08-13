@@ -40,8 +40,17 @@ def sequence_hash(sequence: str) -> str:
 
 
 def classify_input(raw_input: str) -> str:
-    """Return one of: 'uniprot_id', 'pdb_id', 'fasta', 'name'."""
+    """
+    Return one of: 'uniprot_id', 'pdb_id', 'fasta', 'name'.
+
+    Blank input is rejected rather than falling through to 'name'. A gene
+    search for the empty string is a valid query upstream and comes back with
+    an arbitrary first hit, so an empty form would resolve to a real but
+    entirely unrelated protein.
+    """
     stripped = raw_input.strip()
+    if not stripped:
+        raise ValueError("Enter a protein: a gene name, UniProt ID, PDB ID, or sequence.")
     if UNIPROT_PATTERN.match(stripped.upper()):
         return "uniprot_id"
     if PDB_ID_PATTERN.match(stripped) and any(c.isdigit() for c in stripped[:1]):

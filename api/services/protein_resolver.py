@@ -20,6 +20,14 @@ from domain.resolve import (
 )
 
 
+class ProteinNotFound(Exception):
+    """The input was well-formed but names no protein we can find.
+
+    Distinct from ValueError, which means the input itself was unusable.
+    The route maps this to 404 and ValueError to 400.
+    """
+
+
 class ProteinResolver:
     def __init__(
         self,
@@ -41,7 +49,13 @@ class ProteinResolver:
         if kind == "uniprot_id":
             protein = await self._resolve_uniprot(raw_input.strip().upper())
         elif kind == "name":
-            accession = await self.uniprot.search_by_gene_name(raw_input.strip())
+            # UniProtNotFound is a plain Exception, so letting it escape here
+            # surfaced as a 500 for anything that wasn't a real gene — which is
+            # every typo, and every bit of junk a public form receives.
+            try:
+                accession = await self.uniprot.search_by_gene_name(raw_input.strip())
+            except UniProtNotFound as e:
+                raise ProteinNotFound(str(e)) from e
             protein = await self._resolve_uniprot(accession)
         elif kind == "fasta":
             sequence = clean_fasta(raw_input)
@@ -102,8 +116,10 @@ class ProteinResolver:
     async def _resolve_uniprot(self, accession: str) -> ResolvedProtein:
         try:
             sequence, source = await self.uniprot.fetch_sequence(accession)
-        except UniProtNotFound:
-            raise ValueError(f"UniProt accession not found: {accession}")
+        except UniProtNotFound as e:
+            # Not a 400: the request was well-formed, the protein just isn't
+            # there. The route maps this to 404.
+            raise ProteinNotFound(f"No protein found for '{accession}'") from e
 
         return build_resolved_protein(
             sequence=sequence,

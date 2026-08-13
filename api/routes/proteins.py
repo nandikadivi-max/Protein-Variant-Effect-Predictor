@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.deps import get_resolver
-from api.services.protein_resolver import ProteinResolver
+from api.services.protein_resolver import ProteinNotFound, ProteinResolver
 from contracts.schemas import ResolveRequest, ResolveResponse
 from domain.derive import Variant, validate_against_sequence
 
@@ -19,6 +19,10 @@ async def resolve_protein(
         protein = await resolver.resolve(req.input)
     except NotImplementedError as e:
         raise HTTPException(status_code=501, detail=str(e))
+    except ProteinNotFound as e:
+        # Well-formed request, no such protein. Not a server fault, and not a
+        # malformed input either.
+        raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
