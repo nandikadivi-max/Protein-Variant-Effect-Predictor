@@ -79,6 +79,23 @@ class ProteinResolver:
                 structure_ref=None,
                 source="user_fasta",
             )
+            # Somebody may have already resolved this exact sequence from an
+            # accession or gene name. The hash is identical, so the score is
+            # shared either way — but without adopting the identity too, a
+            # paste would come back with no structure and no clinical
+            # annotations while the very same protein searched by name has
+            # both. Reuse what we know rather than treating it as anonymous.
+            known = await self._known_identity(protein.sequence_hash)
+            if known is not None and known.uniprot_id:
+                protein = build_resolved_protein(
+                    sequence=sequence,
+                    coordinate_system="uniprot",
+                    uniprot_id=known.uniprot_id,
+                    structure_ref=StructureRef(
+                        provider="alphafold", identifier=known.uniprot_id
+                    ),
+                    source=known.source,
+                )
         elif kind == "pdb_id":
             protein, mapping = await self._resolve_pdb(raw_input.strip())
         else:
@@ -143,19 +160,49 @@ class ProteinResolver:
         )
 
     async def _upsert_protein(self, protein: ResolvedProtein) -> None:
-        stmt = (
-            pg_insert(Protein)
-            .values(
-                sequence_hash=protein.sequence_hash,
-                sequence=protein.sequence,
-                length=len(protein.sequence),
-                uniprot_id=protein.uniprot_id,
-                source=protein.source,
-            )
-            .on_conflict_do_nothing(index_elements=["sequence_hash"])
+        """
+        Store the protein, learning its identity if this input taught us one.
+
+        The row is keyed by sequence hash, so every input format for the same
+        protein lands here — but a pasted sequence carries no accession while a
+        gene name does. Doing nothing on conflict meant whichever arrived first
+        won permanently: if a paste came first, the row kept uniprot_id NULL,
+        and because ResultsService reads the identity from the stored row
+        rather than the request, clinical annotations were then silently off
+        for that protein for everyone, whatever they searched by.
+
+        So a conflict now fills in an identity we didn't have. It never
+        overwrites one we did — a later anonymous paste must not demote a
+        protein we have already identified.
+        """
+        stmt = pg_insert(Protein).values(
+            sequence_hash=protein.sequence_hash,
+            sequence=protein.sequence,
+            length=len(protein.sequence),
+            uniprot_id=protein.uniprot_id,
+            source=protein.source,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["sequence_hash"],
+            set_={
+                "uniprot_id": stmt.excluded.uniprot_id,
+                "source": stmt.excluded.source,
+            },
+            where=(Protein.uniprot_id.is_(None))
+            & (stmt.excluded.uniprot_id.is_not(None)),
         )
         await self.session.execute(stmt)
         await self.session.commit()
+
+    async def _known_identity(self, sequence_hash: str) -> Protein | None:
+        """An existing row for this sequence, if we've identified it before."""
+        result = await self.session.execute(
+            select(Protein).where(
+                Protein.sequence_hash == sequence_hash,
+                Protein.uniprot_id.is_not(None),
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def load_by_hash(self, sequence_hash: str) -> ResolvedProtein | None:
         result = await self.session.execute(
