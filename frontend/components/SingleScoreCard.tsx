@@ -50,6 +50,27 @@ export function SingleScoreCard({ single, annotation }: Props) {
         </p>
       </div>
 
+      {single.percentile != null && (
+        <div className="mt-4 border-t border-border pt-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted">
+            <Term k="percentile">How it ranks</Term>
+          </div>
+          <p className="mt-2 text-sm">
+            More damaging than{" "}
+            <span className="font-mono font-medium">
+              {single.percentile.toFixed(0)}%
+            </span>{" "}
+            of every possible substitution in this protein.
+          </p>
+          <PercentileBar percentile={single.percentile} />
+          <p className="mt-2 text-xs text-muted">
+            Ranked against all 19 alternatives at every position. This is
+            relative to this protein: somewhere highly constrained, even a mild
+            change can land near the top.
+          </p>
+        </div>
+      )}
+
       {annotation && (
         <div className="mt-4 border-t border-border pt-4">
           <div className="text-xs font-medium uppercase tracking-wide text-muted">
@@ -110,6 +131,32 @@ export function SingleScoreCard({ single, annotation }: Props) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Where this mutation sits among every substitution in the protein.
+ *
+ * A bar rather than a number alone because "94%" invites being read as a
+ * probability of being damaging, which is not what a zero-shot LLR rank means.
+ * Seeing the marker's position against the full width makes it obvious this is
+ * a ranking within one protein.
+ */
+function PercentileBar({ percentile }: { percentile: number }) {
+  const clamped = Math.min(100, Math.max(0, percentile));
+  return (
+    <div className="mt-3">
+      <div className="relative h-1.5 rounded-full bg-gradient-to-r from-tolerated/30 via-border to-damaging/60">
+        <span
+          className="absolute top-1/2 h-3 w-[3px] -translate-y-1/2 rounded-full bg-ink"
+          style={{ left: `calc(${clamped}% - 1.5px)` }}
+        />
+      </div>
+      <div className="mt-1 flex justify-between font-mono text-[10px] text-muted">
+        <span>most tolerated</span>
+        <span>most damaging</span>
+      </div>
     </div>
   );
 }

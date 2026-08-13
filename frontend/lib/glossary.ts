@@ -45,6 +45,8 @@ export const TERMS: Record<string, string> = {
     "Log-likelihood ratio: log P(mutant) − log P(wild type) at the mutated position. Negative means the model finds the substitute less plausible than the original.",
   "effect map":
     "Every possible single substitution, meaning all 20 amino acids at every position, scored at once.",
+  percentile:
+    "Where this mutation's score falls among all 19 alternatives at every position in this protein. It's a ranking within one protein, not a probability that the mutation is harmful.",
   "secondary structure":
     "Local shapes the chain folds into: helices (coils), strands (flat sheets), or neither (loops).",
   buried:
