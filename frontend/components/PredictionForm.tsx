@@ -52,10 +52,9 @@ export function PredictionForm({ phase, onSubmit }: Props) {
           <label className="text-xs font-medium text-muted">
             Protein{" "}
             <span className="font-normal text-muted/70">
-              — a gene name (TP53), a{" "}
-              <Term k="uniprot">UniProt ID</Term> (P04637), a{" "}
-              <Term k="pdb">PDB ID</Term> (1CRN), or paste a{" "}
-              <Term k="fasta">sequence</Term>
+              (a gene name like TP53, a <Term k="uniprot">UniProt ID</Term> like
+              P04637, a <Term k="pdb">PDB ID</Term> like 1CRN, or paste a{" "}
+              <Term k="fasta">sequence</Term>)
             </span>
           </label>
           <input
@@ -70,7 +69,7 @@ export function PredictionForm({ phase, onSubmit }: Props) {
           <label className="text-xs font-medium text-muted">
             Mutation{" "}
             <span className="font-normal text-muted/70">
-              (optional) — e.g. R175H
+              (optional, like R175H)
             </span>
           </label>
           <input

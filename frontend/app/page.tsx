@@ -23,7 +23,7 @@ const PHASE_TEXT: Record<string, string> = {
   // A protein nobody has scored before needs a full forward pass per position,
   // so say so rather than leaving the user watching an unexplained spinner.
   running:
-    "Running ESM-2 — one masked forward pass per position. First time for a given protein takes a minute; after that it's cached.",
+    "Running ESM-2, one masked forward pass per position. The first time for a given protein takes about a minute, then it's cached.",
 };
 
 export default function Home() {
@@ -41,7 +41,8 @@ export default function Home() {
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
           A protein is a string over a 20-letter alphabet. Change one letter and
-          it might work fine — or not fold at all. This scores that change with{" "}
+          it might work fine, or it might not fold at all. This scores that
+          change using{" "}
           <a
             href="https://github.com/facebookresearch/esm"
             target="_blank"
@@ -50,8 +51,11 @@ export default function Home() {
           >
             ESM-2
           </a>
-          , a masked language model trained on 65M protein sequences and{" "}
-          <em className="not-italic text-ink">never on mutation outcomes</em>.
+          , a masked language model trained on 65M protein sequences. It was{" "}
+          <em className="not-italic text-ink">
+            never shown a single mutation outcome
+          </em>
+          .
         </p>
         <HowItWorks />
       </header>
@@ -134,7 +138,7 @@ export default function Home() {
           >
             Source on GitHub
           </a>{" "}
-          · Research tool — not for clinical use.
+          · Research tool, not for clinical use.
         </p>
       </footer>
     </main>

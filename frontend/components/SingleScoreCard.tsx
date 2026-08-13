@@ -45,8 +45,8 @@ export function SingleScoreCard({ single, annotation }: Props) {
             log P(mutant) − log P(<Term k="wild type">wild type</Term>)
           </span>{" "}
           at this position. More negative means the model finds the substitute
-          far less plausible than the original letter — evidence the change is
-          disruptive.
+          far less plausible than the original letter, which is evidence the
+          change is disruptive.
         </p>
       </div>
 

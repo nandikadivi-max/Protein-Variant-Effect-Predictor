@@ -54,26 +54,26 @@ export function HowItWorks() {
             <div className="mt-4 grid gap-5 rounded-lg border border-border bg-surface-raised p-5 text-sm leading-relaxed sm:grid-cols-2">
               <Block n="1" title="A protein is a string">
                 Proteins are chains of{" "}
-                <strong className="font-medium">amino acids</strong>, and there
-                are exactly 20 of them, each written as one letter. So a protein
-                is a string over a 20-letter alphabet:{" "}
+                <strong className="font-medium">amino acids</strong>. There are
+                exactly 20 of them and each one is written as a single letter,
+                so a protein is a string over a 20-letter alphabet:{" "}
                 <code className="font-mono text-xs">MEEPQSDPSV…</code> That
                 string folds into a 3D shape, and the shape is what does the
                 work.
               </Block>
 
-              <Block n="2" title="Change one letter — does it still work?">
+              <Block n="2" title="Change one letter. Does it still work?">
                 Swap a single letter and the protein might be completely fine,
-                or might not fold at all. In humans, the difference is often
-                between healthy and a disease. There are 20 possible letters ×
-                thousands of positions, and almost none of them have ever been
-                measured in a lab.
+                or it might not fold at all. In humans that difference is often
+                the difference between healthy and sick. There are 20 possible
+                letters at each of thousands of positions, and almost none of
+                those combinations has ever been measured in a lab.
               </Block>
 
               <Block n="3" title="ESM-2 is BERT for proteins">
-                Same architecture, same masked-token objective — the corpus is
-                ~65M protein sequences instead of text. Mask a position, predict
-                what belongs there from the surrounding context. This one is
+                Same architecture, same masked-token objective. The corpus is
+                65M protein sequences instead of text. Mask a position, predict
+                what belongs there from the surrounding context. This one has
                 650M parameters.
               </Block>
 
@@ -91,14 +91,14 @@ export function HowItWorks() {
 
               <Block n="5" title="Why this is “zero-shot”">
                 The model has never seen a labelled mutation. It only learned
-                which sequences look plausible — but that turns out to be
-                enough, because{" "}
+                which sequences look plausible, and that turns out to be enough,
+                because{" "}
                 <strong className="font-medium">
-                  evolution supplied the labels
+                  evolution did the labelling for us
                 </strong>
-                . Sequences carrying broken mutations didn&apos;t survive to be
-                sequenced, so they&apos;re absent from the training data. The
-                model learns conservation without anyone annotating it.
+                . Sequences carrying broken mutations never survived to be
+                sequenced, so they simply aren&apos;t in the training data. The
+                model picks up conservation without anyone annotating it.
               </Block>
 
               <Block n="6" title="Does it actually work?">
@@ -112,10 +112,10 @@ export function HowItWorks() {
                   ProteinGym
                 </a>
                 , which collects experiments where labs measured thousands of
-                mutations directly. Mean Spearman correlation{" "}
+                mutations directly. Mean Spearman correlation of{" "}
                 <span className="font-mono">0.447</span> between this score and
-                real measured fitness — in line with published numbers for this
-                model size.
+                real measured fitness, which is in line with published numbers
+                for this model size.
               </Block>
             </div>
 

@@ -30,7 +30,7 @@ export const TERMS: Record<string, string> = {
   protein:
     "A chain of amino acids that folds into a 3D shape. The shape determines what it does.",
   "amino acid":
-    "The building blocks of proteins. There are 20 of them, each written as one letter — so a protein is a string over a 20-letter alphabet.",
+    "The building blocks of proteins. There are 20 of them, each written as one letter, so a protein is a string over a 20-letter alphabet.",
   residue:
     "One amino acid at one position in the chain. Position 175 holds one residue.",
   mutation:
@@ -38,13 +38,13 @@ export const TERMS: Record<string, string> = {
   missense:
     "A mutation that swaps one amino acid for a different one (rather than truncating the protein). That is the only kind this tool scores.",
   "wild type":
-    "The normal, unmutated version of the sequence — the reference to compare against.",
+    "The normal, unmutated version of the sequence. It's the reference you compare against.",
   "zero-shot":
     "The model was never trained on mutation outcomes. It only learned which sequences look plausible, and the score falls out of that.",
   llr:
     "Log-likelihood ratio: log P(mutant) − log P(wild type) at the mutated position. Negative means the model finds the substitute less plausible than the original.",
   "effect map":
-    "Every possible single substitution — all 20 amino acids at every position — scored at once.",
+    "Every possible single substitution, meaning all 20 amino acids at every position, scored at once.",
   "secondary structure":
     "Local shapes the chain folds into: helices (coils), strands (flat sheets), or neither (loops).",
   buried:

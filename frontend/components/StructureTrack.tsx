@@ -45,8 +45,8 @@ export function StructureTrack({ structure }: { structure: StructureContext }) {
           </h3>
           <p className="mt-0.5 max-w-xl text-xs text-muted">
             Where each position sits in the folded shape. <b>SS</b> is the local
-            fold — helix, strand, or neither. <b>Buried</b> marks positions
-            packed inside rather than on the surface; those are the ones that
+            fold: helix, strand, or neither. <b>Buried</b> marks positions
+            packed inside rather than on the surface. Those are the ones that
             usually tolerate change least.
           </p>
         </div>

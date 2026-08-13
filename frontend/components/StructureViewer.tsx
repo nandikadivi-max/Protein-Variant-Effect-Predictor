@@ -93,8 +93,8 @@ export function StructureViewer({ fileUrl, perResidueImpact }: Props) {
         </h3>
         <p className="mt-0.5 text-xs text-muted">
           The folded shape, painted by how badly the model expects each position
-          to break if changed — red is intolerant, pale is relaxed. Drag to
-          rotate. The red interior is the part that has to fold precisely.
+          to break if changed. Red is intolerant, pale is relaxed. Drag to
+          rotate; the red interior is the part that has to fold precisely.
         </p>
       </div>
       {error ? (
