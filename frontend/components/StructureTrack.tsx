@@ -24,10 +24,18 @@ export function StructureTrack({ structure }: { structure: StructureContext }) {
 
   return (
     <div className="rounded-lg border border-border bg-surface-raised p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-medium">
-          Structural context <span className="text-muted">· DSSP</span>
-        </h3>
+      <div className="mb-3 flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-medium">
+            Structural context <span className="text-muted">· DSSP</span>
+          </h3>
+          <p className="mt-0.5 max-w-xl text-xs text-muted">
+            Where each position sits in the folded shape. <b>SS</b> is the local
+            fold — helix, strand, or neither. <b>Buried</b> marks positions
+            packed inside rather than on the surface; those are the ones that
+            usually tolerate change least.
+          </p>
+        </div>
         <Legend />
       </div>
       <div className="scroll-slim overflow-x-auto">

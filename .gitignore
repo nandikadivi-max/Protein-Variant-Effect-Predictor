@@ -39,3 +39,6 @@ frontend/out/
 *.swp
 .idea/
 .vscode/
+
+# TypeScript incremental build cache
+*.tsbuildinfo

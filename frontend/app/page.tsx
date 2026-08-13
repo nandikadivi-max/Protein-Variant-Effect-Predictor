@@ -3,9 +3,11 @@
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import { EffectHeatmap } from "@/components/EffectHeatmap";
+import { HowItWorks } from "@/components/HowItWorks";
 import { PredictionForm } from "@/components/PredictionForm";
 import { SingleScoreCard } from "@/components/SingleScoreCard";
 import { StructureTrack } from "@/components/StructureTrack";
+import { Term } from "@/components/Term";
 import { structureFileUrl } from "@/lib/api";
 import { usePrediction } from "@/lib/usePrediction";
 
@@ -16,9 +18,12 @@ const StructureViewer = dynamic(
 );
 
 const PHASE_TEXT: Record<string, string> = {
-  resolving: "Resolving protein…",
+  resolving: "Looking up the sequence…",
   queued: "Queued for scoring…",
-  running: "Scoring with ESM-2 (first time per protein is slower)…",
+  // A protein nobody has scored before needs a full forward pass per position,
+  // so say so rather than leaving the user watching an unexplained spinner.
+  running:
+    "Running ESM-2 — one masked forward pass per position. First time for a given protein takes a minute; after that it's cached.",
 };
 
 export default function Home() {
@@ -34,11 +39,21 @@ export default function Home() {
         <h1 className="text-2xl font-semibold tracking-tight">
           Protein Variant Effect Predictor
         </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Zero-shot missense variant scoring with ESM-2. Enter a protein and an
-          optional mutation to see a full effect map, the specific substitution
-          score, and any known clinical annotation.
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
+          A protein is a string over a 20-letter alphabet. Change one letter and
+          it might work fine — or not fold at all. This scores that change with{" "}
+          <a
+            href="https://github.com/facebookresearch/esm"
+            target="_blank"
+            rel="noreferrer"
+            className="border-b border-dotted border-muted/60 hover:text-ink"
+          >
+            ESM-2
+          </a>
+          , a masked language model trained on 65M protein sequences and{" "}
+          <em className="not-italic text-ink">never on mutation outcomes</em>.
         </p>
+        <HowItWorks />
       </header>
 
       <section className="rounded-lg border border-border bg-surface-raised p-5">
@@ -101,10 +116,26 @@ export default function Home() {
         </div>
       )}
 
-      <footer className="mt-16 border-t border-border pt-6 text-xs text-muted">
-        ESM-2 (650M) zero-shot scores · AlphaFold / RCSB structures · DSSP ·
-        clinical annotations from the EBI Proteins API. Research tool — not for
-        clinical use.
+      <footer className="mt-16 space-y-2 border-t border-border pt-6 text-xs text-muted">
+        <p>
+          Scores from ESM-2 650M (<Term k="zero-shot">zero-shot</Term>{" "}
+          masked-marginal) · structures from{" "}
+          <Term k="alphafold">AlphaFold</Term> and{" "}
+          <Term k="pdb">RCSB PDB</Term> · fold features from{" "}
+          <Term k="dssp">DSSP</Term> · clinical annotations from the EBI
+          Proteins API (<Term k="clinvar">ClinVar</Term>, Ensembl, UniProt).
+        </p>
+        <p>
+          <a
+            href="https://github.com/nandikadivi-max/Protein-Variant-Effect-Predictor"
+            target="_blank"
+            rel="noreferrer"
+            className="border-b border-dotted border-muted/60 hover:text-ink"
+          >
+            Source on GitHub
+          </a>{" "}
+          · Research tool — not for clinical use.
+        </p>
       </footer>
     </main>
   );

@@ -1,13 +1,32 @@
 "use client";
 
 import { useState } from "react";
+import { Term } from "@/components/Term";
 import type { Phase } from "@/lib/usePrediction";
 
+// Each example carries a plain-English "why this one" — without it the chips
+// read as a list of accession numbers, which means nothing to a reader who
+// doesn't already know the proteins.
 const EXAMPLES = [
-  { label: "TP53 R175H", input: "P04637", mutation: "R175H" },
-  { label: "Insulin (P01308)", input: "P01308", mutation: "" },
-  { label: "Crambin (PDB 1CRN)", input: "1CRN", mutation: "" },
-  { label: "BRCA1", input: "BRCA1", mutation: "" },
+  {
+    label: "TP53 R175H",
+    note: "cancer hotspot",
+    input: "P04637",
+    mutation: "R175H",
+  },
+  {
+    label: "HBB E6V",
+    note: "sickle-cell",
+    input: "P68871",
+    mutation: "E6V",
+  },
+  {
+    label: "SOD1 A4V",
+    note: "ALS",
+    input: "P00441",
+    mutation: "A4V",
+  },
+  { label: "Insulin", note: "small & fast", input: "P01308", mutation: "" },
 ];
 
 interface Props {
@@ -31,7 +50,13 @@ export function PredictionForm({ phase, onSubmit }: Props) {
       <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted">
-            Protein — UniProt ID, gene name, PDB ID, or FASTA
+            Protein{" "}
+            <span className="font-normal text-muted/70">
+              — a gene name (TP53), a{" "}
+              <Term k="uniprot">UniProt ID</Term> (P04637), a{" "}
+              <Term k="pdb">PDB ID</Term> (1CRN), or paste a{" "}
+              <Term k="fasta">sequence</Term>
+            </span>
           </label>
           <input
             value={input}
@@ -43,7 +68,10 @@ export function PredictionForm({ phase, onSubmit }: Props) {
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted">
-            Mutation <span className="text-muted/60">(optional)</span>
+            Mutation{" "}
+            <span className="font-normal text-muted/70">
+              (optional) — e.g. R175H
+            </span>
           </label>
           <input
             value={mutation}
@@ -74,9 +102,13 @@ export function PredictionForm({ phase, onSubmit }: Props) {
               onSubmit(ex.input, ex.mutation);
             }}
             disabled={busy}
-            className="rounded-full border border-border px-3 py-1 text-xs text-muted transition-colors hover:border-ink/30 hover:text-ink disabled:opacity-40"
+            className="group rounded-full border border-border px-3 py-1 text-xs text-muted transition-colors hover:border-ink/30 hover:text-ink disabled:opacity-40"
           >
             {ex.label}
+            <span className="text-muted/60 group-hover:text-muted">
+              {" · "}
+              {ex.note}
+            </span>
           </button>
         ))}
       </div>

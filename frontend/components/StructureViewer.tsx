@@ -86,7 +86,17 @@ export function StructureViewer({ fileUrl, perResidueImpact }: Props) {
 
   return (
     <div className="rounded-lg border border-border bg-surface-raised p-4">
-      <h3 className="mb-3 text-sm font-medium">3D structure</h3>
+      <div className="mb-3">
+        <h3 className="text-sm font-medium">
+          3D structure{" "}
+          <span className="text-muted">· coloured by predicted impact</span>
+        </h3>
+        <p className="mt-0.5 text-xs text-muted">
+          The folded shape, painted by how badly the model expects each position
+          to break if changed — red is intolerant, pale is relaxed. Drag to
+          rotate. The red interior is the part that has to fold precisely.
+        </p>
+      </div>
       {error ? (
         <div className="text-sm text-muted">Could not load structure: {error}</div>
       ) : (

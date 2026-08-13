@@ -136,11 +136,22 @@ export function EffectHeatmap({ effectMap, highlight }: Props) {
 
   return (
     <div className="rounded-lg border border-border bg-surface-raised p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-medium">
-          Variant effect map{" "}
-          <span className="text-muted">· {L} positions × 20 residues</span>
-        </h3>
+      <div className="mb-3 flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-medium">
+            Variant effect map{" "}
+            <span className="text-muted">
+              · {L} positions × 20 amino acids ={" "}
+              {(L * 20).toLocaleString()} predictions
+            </span>
+          </h3>
+          <p className="mt-0.5 text-xs text-muted">
+            Every substitution that could be made anywhere in this protein. Each
+            column is a position, each row an amino acid; dots mark the original
+            letter. Solid red columns are positions that tolerate almost
+            nothing.
+          </p>
+        </div>
         <Legend />
       </div>
       <div className="flex">

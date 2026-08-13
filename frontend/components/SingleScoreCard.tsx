@@ -1,5 +1,7 @@
 import type { SingleScore, VariantAnnotation } from "@/lib/types";
 import { LABEL_COLOR, LABEL_TEXT } from "@/lib/color";
+import { describeMutation } from "@/lib/glossary";
+import { Term } from "@/components/Term";
 
 interface Props {
   single: SingleScore;
@@ -17,6 +19,11 @@ export function SingleScoreCard({ single, annotation }: Props) {
           <div className="mt-1 font-mono text-2xl font-semibold">
             {single.mutation}
           </div>
+          {describeMutation(single.mutation) && (
+            <div className="mt-0.5 text-xs text-muted">
+              {describeMutation(single.mutation)}
+            </div>
+          )}
         </div>
         <span
           className="rounded-full px-3 py-1 text-sm font-medium text-white"
@@ -28,12 +35,18 @@ export function SingleScoreCard({ single, annotation }: Props) {
 
       <div className="mt-4 flex items-center gap-6 text-sm">
         <div>
-          <span className="text-muted">ESM-2 log-likelihood ratio</span>
+          <span className="text-muted">
+            ESM-2 <Term k="llr">log-likelihood ratio</Term>
+          </span>
           <div className="font-mono text-lg">{single.llr.toFixed(2)}</div>
         </div>
-        <p className="max-w-xs text-xs text-muted">
-          Lower (more negative) means the model finds the mutant residue far
-          less likely than wild type — evidence the substitution is disruptive.
+        <p className="max-w-sm text-xs text-muted">
+          <span className="font-mono">
+            log P(mutant) − log P(<Term k="wild type">wild type</Term>)
+          </span>{" "}
+          at this position. More negative means the model finds the substitute
+          far less plausible than the original letter — evidence the change is
+          disruptive.
         </p>
       </div>
 
