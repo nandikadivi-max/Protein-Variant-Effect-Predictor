@@ -61,6 +61,8 @@ export interface VariantPrediction {
 export interface VariantAnnotation {
   mutation: string;
   clinical_significance: string | null;
+  /** Every distinct call the databases returned, most severe first. */
+  significances: string[];
   sources: string[];
   diseases: string[];
   predictions: VariantPrediction[];

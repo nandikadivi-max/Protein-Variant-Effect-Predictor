@@ -137,7 +137,8 @@ class VariantAnnotation(BaseModel):
     our own ESM-2 score in `single` — this is what other databases *say*.
     """
     mutation: str
-    clinical_significance: str | None = None   # "Pathogenic" | "Benign" | "Uncertain" | ...
+    clinical_significance: str | None = None   # "Pathogenic" | "Benign" | "Conflicting interpretations" | ...
+    significances: list[str] = []              # every distinct call seen, most severe first
     sources: list[str] = []                    # ["ClinVar", "Ensembl", ...]
     diseases: list[str] = []                   # associated disease/trait names
     predictions: list[VariantPrediction] = []

@@ -99,6 +99,18 @@ export function SingleScoreCard({ single, annotation }: Props) {
               </span>
             )}
           </div>
+          {annotation.significances.length > 1 && (
+            <p className="mt-2 max-w-lg text-xs text-muted">
+              Submitted as{" "}
+              <span className="text-ink">
+                {annotation.significances.join(", ")}
+              </span>{" "}
+              by different sources. Usually this means more than one DNA change
+              produces the same amino-acid swap, and they were not all
+              interpreted the same way, so the databases genuinely disagree
+              here rather than one of them being out of date.
+            </p>
+          )}
           {annotation.diseases.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {annotation.diseases.slice(0, 6).map((d) => (
