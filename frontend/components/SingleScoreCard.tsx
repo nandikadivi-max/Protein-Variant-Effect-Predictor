@@ -111,6 +111,7 @@ export function SingleScoreCard({ single, annotation }: Props) {
               here rather than one of them being out of date.
             </p>
           )}
+          <Discordance single={single} annotation={annotation} />
           {annotation.diseases.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {annotation.diseases.slice(0, 6).map((d) => (
@@ -154,6 +155,73 @@ export function SingleScoreCard({ single, annotation }: Props) {
       )}
     </div>
   );
+}
+
+/**
+ * Say so when the model and the clinical databases disagree.
+ *
+ * Hiding this would be the dishonest choice, and it is also the most
+ * interesting thing on the page: the gap is not noise, it tracks disease
+ * mechanism. A zero-shot language model scores how ordinary a sequence looks,
+ * so it finds variants that break a fold or hit a conserved site and misses
+ * the ones that leave the protein looking unremarkable. Sickle-cell is the
+ * standing example, which is why it is a demo chip rather than one quietly
+ * swapped out for a variant that scores better.
+ *
+ * Deliberately keyed off the two labels rather than a list of known variants,
+ * so it holds for any protein someone types in.
+ */
+function Discordance({
+  single,
+  annotation,
+}: {
+  single: SingleScore;
+  annotation: VariantAnnotation;
+}) {
+  const call = (annotation.clinical_significance ?? "").toLowerCase();
+  // A conflict is already explained above; don't stack two caveats.
+  if (!call || call.startsWith("conflicting")) return null;
+
+  const clinical = /pathogenic/.test(call) ? 1 : /benign/.test(call) ? -1 : 0;
+  const model =
+    single.label === "likely_damaging"
+      ? 1
+      : single.label === "likely_tolerated"
+        ? -1
+        : 0;
+
+  if (clinical === 1 && model !== 1) {
+    return (
+      <p className="mt-3 max-w-lg rounded-md border border-border bg-surface px-3 py-2 text-xs leading-relaxed text-muted">
+        <span className="font-medium text-ink">
+          The databases and the model disagree here.
+        </span>{" "}
+        ESM-2 judges how plausible a sequence looks next to evolution, so it
+        catches substitutions that destabilise a fold or land on a conserved
+        active site. Variants that leave the folded protein looking fairly
+        ordinary and cause disease some other way are its blind spot.
+        Sickle-cell haemoglobin is the textbook case: the swap puts a sticky
+        patch on the surface that makes deoxygenated haemoglobin polymerise
+        into fibres, and nothing about that looks unusual to a model asking
+        only whether the sequence is evolutionarily normal.
+      </p>
+    );
+  }
+
+  if (clinical === -1 && model === 1) {
+    return (
+      <p className="mt-3 max-w-lg rounded-md border border-border bg-surface px-3 py-2 text-xs leading-relaxed text-muted">
+        <span className="font-medium text-ink">
+          The model scores this lower than the clinical call.
+        </span>{" "}
+        A low score means the substitution is rare against evolution, which is
+        not the same as harmful. Positions can be well conserved across species
+        and still tolerate change in humans.
+      </p>
+    );
+  }
+
+  return null;
 }
 
 /**
