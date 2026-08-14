@@ -16,6 +16,8 @@ interface Props {
   mutation?: string | null;
   /** Hash used to look up the numbering map for colouring. */
   sequenceHash: string;
+  /** Which structure to show: what the visitor actually searched for. */
+  provider?: string | null;
 }
 
 // Three-letter to one-letter, written out rather than imported from a Mol*
@@ -105,6 +107,7 @@ export function StructureViewer({
   perResidueImpact,
   mutation = null,
   sequenceHash,
+  provider = null,
 }: Props) {
   const parent = useRef<HTMLDivElement>(null);
   const pluginRef = useRef<any>(null);
@@ -173,7 +176,7 @@ export function StructureViewer({
         // identity. Failing to fetch it must not stop the structure loading.
         let segments: SiftsSegment[] = [];
         try {
-          const meta = await getStructureInfo(sequenceHash);
+          const meta = await getStructureInfo(sequenceHash, provider);
           segments = meta.sifts_segments ?? [];
           if (!disposed) {
             setInfo({
@@ -237,7 +240,7 @@ export function StructureViewer({
     // and rebuilds the whole plugin, so reacting to the mutation would tear
     // down the viewer, re-download the PDB and reset the camera every time
     // the user picks a different variant. The marker lives in its own effect.
-  }, [fileUrl, perResidueImpact, sequenceHash]);
+  }, [fileUrl, perResidueImpact, sequenceHash, provider]);
 
   // Repaint when the colour mode changes. Its own effect, like the marker:
   // putting `mode` on the init effect would dispose the plugin and re-download

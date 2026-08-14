@@ -12,6 +12,8 @@ export interface ResolveResponse {
   coordinate_system: string;
   source: string;
   has_structure: boolean;
+  /** Which structure this input asks for: "alphafold" or "rcsb". */
+  structure_provider: string | null;
   mutation_valid: boolean | null;
   mutation_error: string | null;
   /** Plain-language account of why the mutation didn't fit, when it didn't. */

@@ -112,10 +112,18 @@ export interface StructureInfo {
 }
 
 /** Structure metadata, including the numbering map the viewer colours by. */
-export function getStructureInfo(sequenceHash: string): Promise<StructureInfo> {
-  return request(`/structures/${sequenceHash}`);
+export function getStructureInfo(
+  sequenceHash: string,
+  provider?: string | null,
+): Promise<StructureInfo> {
+  const q = provider ? `?provider=${encodeURIComponent(provider)}` : "";
+  return request(`/structures/${sequenceHash}${q}`);
 }
 
-export function structureFileUrl(sequenceHash: string): string {
-  return `${API_BASE}/structures/${sequenceHash}/file`;
+export function structureFileUrl(
+  sequenceHash: string,
+  provider?: string | null,
+): string {
+  const q = provider ? `?provider=${encodeURIComponent(provider)}` : "";
+  return `${API_BASE}/structures/${sequenceHash}/file${q}`;
 }

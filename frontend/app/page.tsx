@@ -217,10 +217,14 @@ export default function Home() {
           {p.resolved?.has_structure && (
             <Reveal delay={0.1}>
               <StructureViewer
-                fileUrl={structureFileUrl(p.result.sequence_hash)}
+                fileUrl={structureFileUrl(
+                  p.result.sequence_hash,
+                  p.resolved?.structure_provider,
+                )}
                 perResidueImpact={p.result.per_residue_impact}
                 mutation={single?.mutation ?? null}
                 sequenceHash={p.result.sequence_hash}
+                provider={p.resolved?.structure_provider ?? null}
               />
             </Reveal>
           )}

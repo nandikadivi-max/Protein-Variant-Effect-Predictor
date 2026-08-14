@@ -51,6 +51,10 @@ class ResolveResponse(BaseModel):
     coordinate_system: str
     source: str
     has_structure: bool
+    # Which structure this input asks for: "alphafold" for a gene name,
+    # accession or sequence, "rcsb" when a PDB id was given. Lets the
+    # viewer request the one the visitor actually meant.
+    structure_provider: str | None = None
     mutation_valid: bool | None = None
     mutation_error: str | None = None
     # Populated only when mutation_valid is False: a plain-language account of

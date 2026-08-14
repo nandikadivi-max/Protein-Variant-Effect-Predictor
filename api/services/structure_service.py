@@ -20,7 +20,7 @@ Provider selection in v1:
 import json
 from dataclasses import dataclass
 
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,19 +59,33 @@ class StructureService:
             raise RuntimeError("This StructureService has no network client")
         return self.client
 
-    async def get_or_fetch(self, sequence_hash: str) -> StructureRecord | None:
+    async def get_or_fetch(
+        self, sequence_hash: str, provider: str | None = None
+    ) -> StructureRecord | None:
         """
-        Return the stored structure record, fetching + persisting it on first
-        request. Returns None when the protein is unknown or has no structure
-        source (FASTA-only input).
+        Return a structure record, fetching + persisting it on first request.
+
+        A protein may now hold both a predicted model and an experimental
+        entry, so `provider` says which the caller wants — normally taken from
+        what the visitor actually searched for. Left unset it prefers the
+        AlphaFold model, because that covers the whole sequence while a
+        crystal structure usually covers a fragment.
+
+        Returns None when the protein is unknown or has no structure source
+        (FASTA-only input).
         """
-        existing = await self._load_row(sequence_hash)
+        existing = await self._load_row(sequence_hash, provider)
         if existing is not None:
             if existing.structure_uri:
                 return self._to_record(existing)
             # A recorded-but-not-yet-fetched PDB intent: download it now.
             if existing.provider == "rcsb" and existing.pdb_id:
                 return await self._fetch_rcsb_into(existing)
+            return None
+
+        # Asked for an experimental structure we have no record of: there is
+        # nothing to fetch, since the PDB id only arrives via a resolve.
+        if provider == "rcsb":
             return None
 
         protein = await self._load_protein(sequence_hash)
@@ -89,7 +103,7 @@ class StructureService:
         except StructureNotFound:
             return None
 
-        uri = self.store.write(sequence_hash, "pdb", data)
+        uri = self.store.write(sequence_hash, "alphafold.pdb", data)
         await self._upsert_row(sequence_hash, "alphafold", uri, source_url)
         return StructureRecord(
             sequence_hash=sequence_hash,
@@ -114,21 +128,16 @@ class StructureService:
             pdb_id=mapping.pdb_id,
             sifts_map_uri=sifts_uri,
         )
-        # Experimental beats predicted: if a row already exists it's left alone,
-        # UNLESS it's a predicted AlphaFold model — a PDB input is an explicit
-        # request for the real experimental structure, so we replace it and
-        # reset structure_uri/source_url to trigger a fresh RCSB fetch. An
-        # existing rcsb row is kept (the WHERE fails), keeping this idempotent.
+        # No longer competes with the predicted model: the two are separate
+        # rows now, so recording an experimental entry cannot take the
+        # AlphaFold structure away from everyone else. Re-resolving the same
+        # PDB id refreshes its SIFTS map and re-triggers the file fetch.
         stmt = stmt.on_conflict_do_update(
-            index_elements=["sequence_hash"],
+            index_elements=["sequence_hash", "provider"],
             set_={
-                "provider": stmt.excluded.provider,
                 "pdb_id": stmt.excluded.pdb_id,
                 "sifts_map_uri": stmt.excluded.sifts_map_uri,
-                "structure_uri": None,
-                "source_url": None,
             },
-            where=(Structure.provider == "alphafold"),
         )
         await self.session.execute(stmt)
         await self.session.commit()
@@ -139,10 +148,17 @@ class StructureService:
             data, source_url = await self._require_client().fetch_rcsb(row.pdb_id)
         except StructureNotFound:
             return None
-        uri = self.store.write(row.sequence_hash, "pdb", data)
+        # Provider-scoped object key, and a provider-scoped UPDATE. Both
+        # matter now that a protein has more than one structure: a bare
+        # sequence_hash would make the experimental file overwrite the
+        # prediction in storage, and stamp its URI onto the prediction's row.
+        uri = self.store.write(row.sequence_hash, "rcsb.pdb", data)
         await self.session.execute(
             update(Structure)
-            .where(Structure.sequence_hash == row.sequence_hash)
+            .where(
+                Structure.sequence_hash == row.sequence_hash,
+                Structure.provider == "rcsb",
+            )
             .values(structure_uri=uri, source_url=source_url)
         )
         await self.session.commit()
@@ -154,9 +170,11 @@ class StructureService:
             structure_uri=uri,
         )
 
-    async def read_file(self, sequence_hash: str) -> tuple[bytes, str] | None:
+    async def read_file(
+        self, sequence_hash: str, provider: str | None = None
+    ) -> tuple[bytes, str] | None:
         """Return (raw_bytes, format) for a fetched structure, or None."""
-        record = await self.get_or_fetch(sequence_hash)
+        record = await self.get_or_fetch(sequence_hash, provider)
         if record is None:
             return None
         return self.store.read(record.structure_uri), record.fmt
@@ -176,7 +194,9 @@ class StructureService:
             return None
         return StructureContext.model_validate_json(self.store.read(uri))
 
-    async def load_sifts_segments(self, sequence_hash: str) -> list[dict] | None:
+    async def load_sifts_segments(
+        self, sequence_hash: str, provider: str | None = None
+    ) -> list[dict] | None:
         """
         Load the stored SIFTS segments (author->UniProt map) for a protein.
 
@@ -187,7 +207,7 @@ class StructureService:
         end is reconstructed from the start plus the UniProt span; anything
         still incoherent is dropped rather than allowed to mis-map residues.
         """
-        row = await self._load_row(sequence_hash)
+        row = await self._load_row(sequence_hash, provider)
         if row is None or not row.sifts_map_uri:
             return None
         raw = json.loads(self.store.read(row.sifts_map_uri))["segments"]
@@ -207,11 +227,27 @@ class StructureService:
             repaired.append({**seg, "pdb_start": start, "pdb_end": end})
         return repaired
 
-    async def _load_row(self, sequence_hash: str) -> Structure | None:
-        result = await self.session.execute(
-            select(Structure).where(Structure.sequence_hash == sequence_hash)
-        )
-        return result.scalar_one_or_none()
+    async def _load_row(
+        self, sequence_hash: str, provider: str | None = None
+    ) -> Structure | None:
+        """
+        The stored row for this protein, optionally for a specific provider.
+
+        With no preference, an AlphaFold model wins over an experimental one:
+        it spans the whole sequence, so it matches the full-length heatmap and
+        DSSP track beside it, whereas a crystal structure usually covers a
+        fragment. A visitor who asked for a PDB id gets that entry because the
+        caller passes the preference through.
+        """
+        stmt = select(Structure).where(Structure.sequence_hash == sequence_hash)
+        if provider is not None:
+            stmt = stmt.where(Structure.provider == provider)
+        else:
+            stmt = stmt.order_by(
+                case((Structure.provider == "alphafold", 0), else_=1)
+            )
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
 
     async def _load_protein(self, sequence_hash: str) -> Protein | None:
         result = await self.session.execute(
@@ -230,7 +266,7 @@ class StructureService:
                 structure_uri=uri,
                 source_url=source_url,
             )
-            .on_conflict_do_nothing(index_elements=["sequence_hash"])
+            .on_conflict_do_nothing(index_elements=["sequence_hash", "provider"])
         )
         await self.session.execute(stmt)
         await self.session.commit()
@@ -241,6 +277,8 @@ class StructureService:
         # structure_uri is set (it's nullable at the DB level for pending rows).
         uri = row.structure_uri
         assert uri is not None, "_to_record requires a fetched structure_uri"
+        # URIs are provider-scoped ("...alphafold.pdb"), so take the final
+        # extension rather than everything after the first dot.
         fmt = uri.rsplit(".", 1)[-1] if "." in uri else "pdb"
         return StructureRecord(
             sequence_hash=row.sequence_hash,

@@ -17,16 +17,22 @@ from contracts.schemas import SiftsSegment, StructureInfo
 router = APIRouter()
 
 
-def _file_url(sequence_hash: str) -> str:
-    return f"/api/v1/structures/{sequence_hash}/file"
+def _file_url(sequence_hash: str, provider: str) -> str:
+    return f"/api/v1/structures/{sequence_hash}/file?provider={provider}"
 
 
 @router.get("/structures/{sequence_hash}", response_model=StructureInfo)
 async def get_structure(
     sequence_hash: str,
+    provider: str | None = None,
     structures: StructureService = Depends(get_structure_service),
 ) -> StructureInfo:
-    record = await structures.get_or_fetch(sequence_hash)
+    # `provider` reflects what the visitor actually searched: a PDB id asks
+    # for that experimental entry, anything else gets the full-length
+    # prediction. Unset means "whatever suits", which prefers AlphaFold.
+    if provider not in (None, "alphafold", "rcsb"):
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+    record = await structures.get_or_fetch(sequence_hash, provider)
     if record is None:
         raise HTTPException(
             status_code=404,
@@ -36,14 +42,16 @@ async def get_structure(
     # numbers its residues however the depositors did, so without this map a
     # cropped structure is coloured with a constant offset — 1TUP's p53 DBD
     # runs 1-219 in the file but 94-312 in UniProt.
-    segments = await structures.load_sifts_segments(sequence_hash) or []
+    segments = await structures.load_sifts_segments(
+        sequence_hash, record.provider
+    ) or []
 
     return StructureInfo(
         sequence_hash=record.sequence_hash,
         provider=record.provider,
         format=record.fmt,
         source_url=record.source_url,
-        file_url=_file_url(sequence_hash),
+        file_url=_file_url(sequence_hash, record.provider),
         sifts_segments=[SiftsSegment(**s) for s in segments],
     )
 
@@ -51,9 +59,10 @@ async def get_structure(
 @router.get("/structures/{sequence_hash}/file")
 async def get_structure_file(
     sequence_hash: str,
+    provider: str | None = None,
     structures: StructureService = Depends(get_structure_service),
 ) -> Response:
-    result = await structures.read_file(sequence_hash)
+    result = await structures.read_file(sequence_hash, provider)
     if result is None:
         raise HTTPException(status_code=404, detail=f"No structure available for {sequence_hash}")
     data, fmt = result

@@ -115,6 +115,9 @@ async def resolve_protein(
         coordinate_system=protein.coordinate_system,
         source=protein.source,
         has_structure=protein.structure_ref is not None,
+        structure_provider=(
+            protein.structure_ref.provider if protein.structure_ref else None
+        ),
         mutation_valid=mutation_valid,
         mutation_error=mutation_error,
         mutation_explanation=explanation,
