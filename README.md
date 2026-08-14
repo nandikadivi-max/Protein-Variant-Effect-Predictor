@@ -20,16 +20,31 @@ optionally a mutation, and it returns:
 - **A score for the substitution** — the ESM-2 log-likelihood ratio
   `log P(mutant) − log P(wild-type)` at that position, with a calibrated
   damaging / uncertain / tolerated label.
+- **Where that score ranks** — a raw LLR is uninterpretable on its own, so it
+  is also reported against every possible substitution in the same protein:
+  *"more damaging than 81% of them"*.
 - **The complete mutational landscape** — every one of the 20 amino acids at
   every position, as a diverging heatmap. Conserved positions read as solid
-  red bands; tolerant loops read pale.
+  red bands; tolerant loops read pale. **Click any cell** to score that
+  substitution — it re-reads the cached matrix, so it is instant.
 - **Structure in 3D** — AlphaFold or experimental RCSB, coloured per-residue
-  by mean predicted impact, so the constrained core is visually obvious.
-- **Structural context** — DSSP secondary structure and relative solvent
+  by predicted impact, with the mutated residue marked. The panel says which
+  you are looking at, and a predicted model can be recoloured by its own
+  **pLDDT confidence** — because a third of some models is low-confidence and
+  should not be read as structure.
+- **Structural context** — secondary structure and relative solvent
   accessibility, projected onto UniProt coordinates.
 - **Clinical annotation** — ClinVar / Ensembl / UniProt / NCI-TCGA
   significance and associated diseases via the EBI Proteins API, plus
   AlphaMissense when the local dataset is present.
+- **A shareable link** — the URL carries the protein and mutation, so a result
+  can be sent to someone rather than described.
+
+Mistyped input is repaired rather than rejected. Ask for sickle-cell as `E6V`
+and it answers *"position 6 is proline (P), not glutamic acid (E)"* and offers
+**E7V** — because clinical variant names number the mature protein while this
+tool uses UniProt numbering, which counts the initiator methionine. A misspelt
+gene gets "did you mean" candidates.
 
 For TP53 R175H the model returns **LLR −5.97 → likely damaging**, independently
 corroborated by ClinVar's **Pathogenic** call. DSSP puts R175 at 2% relative
@@ -91,13 +106,32 @@ colouring are all cheap derivations of that one matrix. The cache key is
 exactly once per model, ever. Repeat requests never reach the GPU-shaped path
 at all.
 
+Scoring is deterministic — pinned checkpoint revision, eval mode, no sampling,
+each position masked independently — so the cache is memoisation of a pure
+function rather than an approximation of a fresh run. Re-scoring the same
+sequence with the same model returns the same numbers. The meaningful version
+of "score it again" is *a different model*, which is why `model_id` is part of
+the cache key.
+
 **2. One coordinate system.**
 UniProt canonical numbering (1-based) is the single source of truth, converted
-to 0-based at exactly two boundary points. PDB structures are mapped through
-[SIFTS](https://www.ebi.ac.uk/pdbe/docs/sifts/) rather than trusting author
-numbering. This is the class of bug where a mutation string, a scored
-position, and a coloured residue silently disagree — it is designed out rather
-than tested for.
+to 0-based at exactly two boundary points. This is the class of bug where a
+mutation string, a scored position and a coloured residue silently disagree,
+and it bites in two directions:
+
+- *Clinical names count differently.* Sickle-cell haemoglobin is famously E6V,
+  but that numbers the mature protein, after the initiator methionine is
+  cleaved. Here it is **E7V**.
+- *Structure files number differently again.* In PDB 1TUP the p53
+  DNA-binding domain runs 1–219 by `label_seq_id` but 94–312 in UniProt, so
+  colouring by the file's own numbering paints every residue with the impact
+  of one 93 positions away. Residues are located by author numbering and
+  mapped through [SIFTS](https://www.ebi.ac.uk/pdbe/docs/sifts/).
+
+A protein keeps its predicted model and its experimental structures side by
+side, keyed `(sequence_hash, provider)`, and which one you see follows what you
+searched for. Keying on the protein alone meant one visitor resolving a PDB id
+replaced the AlphaFold model for everyone.
 
 **3. The API never imports torch.**
 Inference lives behind a `Scorer` protocol with a single method:
@@ -203,7 +237,7 @@ Or run the whole stack in containers with `docker compose up --build`.
 ## Tests
 
 ```bash
-pytest -m "not network and not integration"   # fast: 54 tests, no network or DB
+pytest -m "not network and not integration"   # fast: 103 tests, no network or DB
 pytest -m network                             # hits the real UniProt/EBI APIs
 pytest -m "integration and network"           # needs Postgres + Redis running
 pytest worker/scorers/test_esm2_smoke.py -s   # the correctness check that matters most

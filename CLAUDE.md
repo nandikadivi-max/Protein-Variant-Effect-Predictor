@@ -1,410 +1,196 @@
 # Protein Variant Effect Predictor — Project Context
 
-This file is read automatically by Claude Code. It captures the full
-project state as of the handoff from chat-based planning to Claude Code
-development. Read this before making changes.
+Read this before making changes. It records the decisions that are load-bearing
+and the mistakes already made, so they are not made twice.
 
-## What this project is
+## What this is
 
-A research-oriented protein variant effect predictor: given a protein and
-a mutation (e.g. TP53 R175H), predict whether the mutation is damaging,
-using zero-shot ESM-2 scoring. Includes an interactive 3D structure
-viewer (Mol*) and a full variant-effect heatmap. Benchmarked against
-ProteinGym. Built as a portfolio/research project for recruiter and
-professor showcases — code quality and commit history matter, not just
-functionality.
+Zero-shot missense variant effect prediction with ESM-2, plus a Mol* 3D viewer,
+a full L×20 effect map, DSSP structural context and clinical annotations.
+Benchmarked against ProteinGym. A portfolio and research piece, so commit
+history and code quality matter as much as behaviour.
 
-**Owner:** Nandika Divi. Repo: `github.com/nandikadivi-max/Protein-Variant-Effect-Predictor`
+**Owner:** Nandika Divi · `github.com/nandikadivi-max/Protein-Variant-Effect-Predictor`
+**Live:** https://protein-variant-effect-predictor.vercel.app
+**API:** https://pvep-api-755950833591.us-east1.run.app
+
+## Status
+
+Deployed and working. All phases complete. **103 tests** pass
+(`pytest -m "not network and not integration"`), mypy and ruff clean.
+
+Deliberately deferred, with the owner's agreement:
+- **LLM-assisted input help** ("Tier 2") — revisit in a month or two. Tier 1,
+  deterministic repair, is built and covers the overwhelming majority.
+- **Popularity-ranked example chips.** No new tracking is needed when this is
+  picked up: `JobService.create_or_reuse` writes a `Job` row on the cached path
+  too, so `jobs` is already a complete request log. Filter to jobs created
+  after 2026-08-13 — everything before that is development traffic.
 
 ## Non-negotiable architectural decisions
 
-These were deliberated at length and are frozen. Do not refactor away
-from them without discussing first — each one exists to prevent a
-specific class of bug or a specific late-stage rewrite.
+Each exists to prevent a specific class of bug. Do not refactor away without
+discussing.
 
 ### 1. Compute once per protein, derive everything
-ESM-2 masked-marginal scoring produces one `(L, 20)` log-probability
-matrix per protein. Every product — single mutation score, full L×20
-heatmap, per-residue 3D coloring — is a cheap derivation of that one
-matrix (`domain/derive.py`). The cache key is `(model_id, sequence_hash)`,
-not the mutation. A protein is scored exactly once per model, ever.
+One `(L, 20)` log-probability matrix per protein. The single score, the
+heatmap, the per-residue 3D colouring and the percentile are all cheap
+derivations of it (`domain/derive.py`). The cache key is
+`(model_id, sequence_hash)` — never the mutation.
+
+Scoring is **deterministic**: pinned checkpoint revision, `eval()` mode, no
+sampling, positions masked independently. Re-running the same model on the
+same sequence returns the same numbers, so there is no "recompute for a better
+answer" — the cache is memoisation of a pure function, not an approximation.
+The legitimate version of "score it again" is *a different model*, which the
+cache key already accommodates.
 
 ### 2. One coordinate system
-UniProt canonical numbering (1-based, converted to 0-based only at the
-two designated boundary points) is the single source of truth for every
-position. AlphaFold structures are UniProt-numbered by default. PDB
-structures require an explicit SIFTS map (not yet implemented — deferred
-to the structure pipeline phase). Never let a mutation string, a scored
-position, and a 3D-colored residue silently refer to different numbering
-schemes.
+UniProt canonical numbering is the source of truth everywhere, converted to
+0-based only at designated boundaries. This has bitten repeatedly:
+- **Clinical names use mature-protein numbering.** Sickle-cell is famously
+  E6V, but the initiator methionine makes it **E7V** here. Same for SOD1 A4V →
+  **A5V**. Two example chips shipped wrong because of this.
+- **Structure files number residues their own way.** See §5.
 
-### 3. Async from day one, warm model singleton
-The API process **never imports torch**. A separate worker process loads
-ESM-2 once and stays warm across jobs. This is a hard Docker image
-boundary — see "Process boundary" below.
+### 3. The API never imports torch
+Inference sits behind the `Scorer` protocol (`domain/scoring.py`), whose only
+implementation is `worker/scorers/esm2.py` — the sole file importing torch.
+`AA_ORDER = "ACDEFGHIKLMNPQRSTVWY"` is frozen. Adding SaProt or ESM-C means one
+new class. Hard Docker boundary: API ~550MB, worker ~2.2GB.
 
-The worker has **two transports**, sharing one scoring core
-(`worker/scoring_job.py` `run_scoring`):
-- **`worker/main.py`** — ARQ, *pulls* from Redis. Local dev. Model warm
-  forever.
-- **`worker/http_app.py`** — FastAPI `POST /score`, *pushed* to by Cloud
-  Tasks. Production. Scores inside the request so Cloud Run can scale the
-  worker to zero when idle. Model loads lazily on first use (a load in the
-  lifespan would risk failing the startup probe).
+### 4. Two worker transports, one scoring core
+`worker/scoring_job.py::run_scoring` is shared by:
+- `worker/main.py` — ARQ, **pulls** from Redis. Local dev, model warm forever.
+- `worker/http_app.py` — FastAPI `POST /score`, **pushed** by Cloud Tasks.
+  Production. Scoring happens inside the request so Cloud Run can scale to
+  zero. The model loads lazily on first use; loading in the lifespan risks
+  failing the startup probe.
 
-The API picks a transport via `JOB_DISPATCH` (`arq` | `cloudtasks`) and
-depends only on the `JobDispatcher` protocol in
-`api/services/job_dispatcher.py` — it never learns which one carried the
-job. Redis is only a transport (job *state* lives in Postgres), so the
-Cloud Tasks path needs no Redis at all.
+The API picks via `JOB_DISPATCH` (`arq` | `cloudtasks`) and depends only on the
+`JobDispatcher` protocol. **Redis is not needed in production** — it is only a
+transport; job state lives in Postgres.
 
-### The `Scorer` protocol (anti-refactor centerpiece)
-`domain/scoring.py` defines a `Scorer` Protocol with one method:
-`per_position_log_probs(sequence) -> (L, 20) ndarray`. `worker/scorers/esm2.py`
-is the only implementation right now and the **only file in the whole
-repo that imports torch**. Adding SaProt, ESM C, or an ensemble later
-means writing a new class satisfying this protocol — zero changes to any
-caller. `AA_ORDER = "ACDEFGHIKLMNPQRSTVWY"` is frozen; every scorer must
-gather its output into exactly this column order.
+`run_scoring` uses three short-lived DB sessions. Holding one across the model
+run made Neon drop the connection mid-job and lose the work *after* paying for
+it.
 
-## Tech stack (locked)
+### 5. Structures: one per provider, chosen per request
+`structures` is keyed `(sequence_hash, provider)`, so a protein holds its
+AlphaFold model **and** an experimental PDB entry at once. Which one you see
+follows what you searched (`structure_provider` on the resolve response,
+`?provider=` on `/structures`), defaulting to AlphaFold for full-length
+coverage.
 
-- **Frontend:** Next.js/React/TypeScript, Tailwind, shadcn/ui, Framer Motion, Mol* for 3D
-- **Backend:** FastAPI (async, never imports torch)
-- **Worker:** ARQ (async Redis queue), holds ESM-2 warm in a module singleton
-- **ML:** PyTorch + Hugging Face Transformers, ESM-2 650M (`facebook/esm2_t33_650M_UR50D`, MIT licensed, not gated)
-- **DB:** PostgreSQL via SQLAlchemy 2.0 async + Alembic migrations
-- **Queue/cache:** Redis
-- **Matrix storage:** pluggable `MatrixStore` protocol — `LocalMatrixStore` (filesystem, active) and `GCSMatrixStore` (Google Cloud Storage, implemented but unused until deploy)
-- **Bioinformatics:** Biopython, DSSP (not yet wired), UniProt REST API, AlphaFold DB, RCSB PDB
-- **Design direction:** scientific & minimalistic — light neutral background, `Inter` (UI) + `JetBrains Mono` (sequences/mutations), restrained diverging color scale (blue↔red) for the heatmap
+Before this, `sequence_hash` alone was the key, so resolving a PDB id
+overwrote the prediction **globally** — one visitor changed what everyone saw.
 
-## Environment (already set up and verified working)
+Numbering, which is the subtle part:
+- **Colour by author numbering mapped through SIFTS**, never `label_seq_id`.
+  In 1TUP the p53 DBD is `label_seq_id` 1–219 but UniProt 94–312, so reading
+  `label_seq_id` painted every residue with one 93 positions away.
+- The mutation marker must use the **same** mapping as the colour theme.
+- Object storage keys are provider-scoped (`alphafold.pdb` / `rcsb.pdb`);
+  a bare `pdb` key made the two structures overwrite each other's file.
+- PDBe sometimes omits `author_residue_number` (1TUP does) and numbers only
+  one chain of a multimer. Both are reconstructed in `sifts_client`.
 
-- macOS, Apple Silicon
-- Python 3.11.9 via pyenv (`pyenv local 3.11.9` set in repo root — do not use the `base` conda env)
-- Node 20.20.2 via nvm
-- Docker Desktop 29.6.2
-- Homebrew 6.0.12
-- Virtualenv at `.venv/` — activate with `source .venv/bin/activate`
+## Scientific claims — keep these honest
 
-Known environment gotcha already solved: pyenv-built Python needs `xz`
-installed *before* compiling or `lzma` breaks (`brew install xz` then
-`pyenv uninstall -f 3.11.9 && pyenv install 3.11.9`). Already fixed on
-this machine — noting in case of a fresh machine setup later.
+Reviewed as a domain expert; two claims previously overreached.
 
-## Repository structure (as of last verified state)
+- **Thresholds** (`DAMAGING_LLR_THRESHOLD = -5.50`,
+  `TOLERATED_LLR_THRESHOLD = -1.33`) are calibrated for **90% agreement with
+  AlphaMissense**, which is itself a predictor. That is *not* 90% clinical
+  accuracy. Calibrating against DMS fitness instead labels TP53 R175H — an
+  established hotspot — as tolerated, which is why AlphaMissense was chosen.
+- **ProteinGym mean Spearman 0.447** is over **five** small assays spanning
+  0.017–0.599, not the full ~200-assay benchmark. It shows the harness works;
+  it is not a benchmark reproduction.
+- **Multi-substitution scores are additive**, ignoring epistasis. Surfaced in
+  the UI, and `percentile` is `None` for them because a summed LLR is not drawn
+  from the single-substitution distribution.
+- **AlphaFold models carry pLDDT** in the B-factor column; 29% of TP53's atoms
+  are below 50. The viewer offers a Confidence mode — **only for predicted
+  models**, since the same column in an experimental structure means atomic
+  mobility, the inverse reading.
+- Scores are against **UniProt canonical isoform** only.
+
+## Layout
 
 ```
-/contracts        Pydantic schemas shared by api + worker. No torch. FROZEN API contract.
-/domain           Pure business logic: scoring.py (Scorer protocol, AA_ORDER),
-                   derive.py (matrix -> products), resolve.py (input classification,
-                   sequence hashing). No torch, no I/O side effects. Fully unit tested.
-/config.py         Top-level Settings (pydantic-settings), shared by api + worker.
-/db                Top-level: SQLAlchemy models (proteins, score_matrices, structures,
-                   jobs), async session factory, Alembic migrations. Shared by api + worker
-                   — promoted out of api/ specifically so the worker can persist without
-                   importing api-only code.
-/storage           Top-level: MatrixStore protocol + LocalMatrixStore/GCSMatrixStore.
-                   Promoted out of api/ for the same reason as db/.
-/api               FastAPI app. NEVER imports torch.
-  main.py          App entrypoint, lifespan (creates ARQ redis pool), route registration
-  deps.py          Dependency-injection factories for all services
-  routes/          proteins.py (resolve), jobs.py (create/poll), results.py (get scores)
-  services/        uniprot_client.py (real UniProt REST calls), protein_resolver.py,
-                   job_service.py (cache-hit logic — THE critical perf path),
-                   results_service.py (reads matrix, computes derived products)
-/worker            The ONLY place torch/transformers/esm live.
-  scoring_job.py   run_scoring() — the actual job body, shared by both transports
-  main.py          ARQ transport (pull from Redis). Warm ESM-2 singleton. Dev.
-  http_app.py      HTTP transport (POST /score). Lazy model load. Prod/Cloud Run.
-  scorers/esm2.py  ESM2Scorer — masked-marginal scoring implementation
-  scorers/test_esm2_smoke.py  TP53 R175H correctness smoke test (see below — MUST verify)
-/benchmark         Offline ProteinGym harness. NOT YET BUILT (Phase 7).
-/frontend          Next.js app. NOT YET BUILT (Phase 6). package.json + tailwind.config.ts
-                   scaffolded with design tokens only.
-/infra             Dockerfile.api (thin, no torch), Dockerfile.worker (torch + DSSP)
-/tests             test_end_to_end.py — in-process integration test exercising the full
-                   resolve -> score -> persist -> read pipeline against real Postgres+Redis
-docker-compose.yml  postgres, redis, api, worker services
-alembic.ini         Points to db/migrations
-.env.example        Copy to .env for local dev
+contracts/   Pydantic schemas shared by api + worker. No torch. Frozen contract.
+domain/      Pure logic, no I/O: Scorer protocol, variant parsing, matrix
+             derivation, percentile, input classification, repair suggestions.
+api/         FastAPI. Never imports torch.
+  services/    resolution, job dispatch, results, structures, annotations,
+               catalog of already-scored proteins
+worker/      The only place torch lives.
+  scoring_job.py  the job body, shared by both transports
+  scorers/esm2.py masked-marginal implementation
+  features/dssp.py secondary structure + SASA, projected onto UniProt coords
+db/          Models + Alembic migrations (head: 0004_structures_per_provider)
+storage/     MatrixStore + StructureStore (local | GCS, swapped by config)
+frontend/    Next.js 14 App Router
+benchmark/   ProteinGym harness + threshold calibration
+infra/       Dockerfiles + cloudbuild.yaml
 ```
 
-## Current status — exactly where we left off
+`db/` and `storage/` are top-level so the worker can persist without importing
+API-only code.
 
-**Phases 1, 2, 3a, 3b are code-complete AND now fully verified running.**
-Last verified test run (2026-07-20): **`30 passed`** — the ENTIRE suite,
-including network, integration, and the ESM-2 smoke test, all green
-together with `torch` installed.
+## Environment and gotchas
 
-**The whole backend has now been exercised for real, not just unit-tested:**
-- Postgres + Redis up and healthy (docker compose), schema created
-  (`alembic upgrade head`, at `0001_initial`, 4 tables present).
-- `torch` 2.13.0 + `transformers` 5.14.1 installed via `.[worker]`.
-- TP53 R175H smoke test **run and passing**: LLR = **−5.9744** (damaging),
-  vs conservative K372R = −0.0982. Scorer position/token indexing is
-  correct.
-- Full in-process integration test passing (ubiquitin, L8P → LLR −8.97).
-- **Real HTTP round trip done** through live `uvicorn` API + live `arq`
-  worker + Redis + Postgres: resolve `P01308` (insulin) → job (queued,
-  not cached) → worker scored → results (110×20 effect map, M1V LLR
-  −6.02, `likely_damaging`). Cache-hit path confirmed over HTTP
-  (`cached: true`, `status: done`, nothing re-queued). Matrix `.npz`
-  files persisted under `data/matrices/`.
+- Python 3.11.9 via pyenv, venv at `.venv/`. Node 20 via nvm (**system node is
+  25 — `nvm use 20`**).
+- **Never run `next build` while `next dev` is running** — it corrupts `.next`.
+  Stop dev, `rm -rf .next`, rebuild.
+- **Port 5432 is blocked on the owner's WiFi.** Alembic and any direct DB work
+  need a phone hotspot; everything else (gcloud, Docker, Cloud Build) is 443
+  and fine. Batch DB work into one tethered session.
+- **Build images with Cloud Build**, never locally: the laptop is arm64 and
+  Cloud Run needs amd64. `gcloud builds submit --config infra/cloudbuild.yaml .`
+  `.gcloudignore` keeps the context at 0.2MB; without it, 3.7GB is uploaded.
+- **DSSP needs no binary.** `mkdssp` 4.x aborts without the ~800MB wwPDB
+  chemical dictionary and silently produced nothing in the container.
+  Secondary structure is pure-Python (pydssp) + Biopython Shrake-Rupley.
+- **AlphaMissense** (~1.2GB SQLite) is optional and gitignored; the app
+  degrades gracefully without it.
 
-- **Containerized stack verified:** both Docker images build and run.
-  Round trip through the real `api` + `worker` containers (78-aa FASTA →
-  queued job → worker scored inside the container in ~15s → 78×20 map,
-  K8P LLR −0.15, cache-hit confirmed). API image **543MB** (no torch,
-  boundary intact), worker image **8.93GB** (torch + CUDA — see deploy
-  note in "Immediate next steps").
+## Operational limits
 
-Several fixes landed while getting this running (see "Known issues" below):
-`greenlet` dependency, the async-engine test-loop conftest, and the
-Dockerfile ordering + setuptools packaging fixes that made the images
-build at all.
+- Scoring costs **~1s per residue** on the 8-vCPU worker. A novel 400-residue
+  protein takes minutes; the UI says so and estimates from length. Cloud Tasks
+  caps a job at 30 minutes.
+- Cloud Tasks: `maxAttempts=3`, `maxConcurrentDispatches=4`. It shipped with
+  **100 retries**, where one timing-out job could have cost ~$17.
+- Worker `--max-instances 2`, `--concurrency 1`, scale-to-zero. Idle cost ≈ $0.
+- The demo proteins are pre-seeded (`scripts/seed_demo_cache.py`) so visitors
+  never wake the worker.
 
-### What's fully built and tested
-- Domain layer (`domain/`): `Scorer` protocol, `AA_ORDER`, sequence
-  validation, `Variant` parsing (`R248Q`, multi-sub `R248Q:D281N`),
-  matrix derivation math, input classification, sequence hashing/dedup.
-  18 unit tests, all pass, no network/DB needed.
-- Matrix storage (`storage/`): `LocalMatrixStore` fully tested (5 tests,
-  round-trip write/read, sharding, existence checks). `GCSMatrixStore`
-  implemented but never exercised — do so before relying on it.
-- UniProt client (`api/services/uniprot_client.py`): verified against the
-  **real** UniProt REST API (3 integration tests, marked
-  `@pytest.mark.network`, all pass). Notably fixed a real bug here: gene
-  search originally OR'd `gene_exact` with a loose `protein_name` match,
-  which caused `TP53` to sometimes resolve to `TP53RK` (a different gene
-  whose description contains the substring "TP53"). Now uses
-  `gene_exact` only — precision over recall by design.
-- ESM-2 scorer (`worker/scorers/esm2.py`): implemented, not yet run
-  end-to-end (needs `pip install -e ".[worker]"`, ~2GB torch download).
-  **The TP53 R175H smoke test in `worker/scorers/test_esm2_smoke.py` has
-  never actually been executed** — the TP53 sequence was typed from
-  memory and needs verification. This is the single most important
-  correctness check in the codebase (a hotspot cancer mutation MUST
-  score as damaging, or something is wrong with position/token indexing).
-  **Run this before trusting anything downstream of the scorer.**
-- API routes: all 5 endpoints registered and verified via OpenAPI schema
-  introspection (`POST /api/v1/proteins/resolve`, `POST /api/v1/jobs`,
-  `GET /api/v1/jobs/{id}`, `GET /api/v1/results/{sequence_hash}`,
-  `GET /health`). Never hit with a real request yet — needs Postgres +
-  Redis running.
-- Worker (`worker/main.py`): real `score_job` implementation (not
-  stubbed), loads sequence from DB, scores, persists matrix + DB row,
-  updates job status. **Never actually run** — needs the full stack up.
+## Known limitations
 
-### What's explicitly NOT built yet
-- ~~AlphaFold/RCSB structure fetching~~ **DONE (Phase 4a):** StructureStore,
-  StructureClient (AlphaFold via prediction API + RCSB), StructureService,
-  and `GET /structures/{hash}` + `/file` endpoints. Verified end to end.
-- ~~PDB ID resolution~~ **DONE (Phase 4b):** the `pdb_id` path maps a PDB
-  entry to its UniProt entry via PDBe SIFTS, scores in UniProt coordinates,
-  and records the experimental RCSB structure + SIFTS residue map (fetched
-  lazily). `SiftsClient`, resolver `pdb_id` branch, migration 0003. Verified
-  1CRN → P01542 end to end.
-- ~~DSSP structural features~~ **DONE (Phase 4c):** `worker/features/dssp.py`
-  computes 3-state secondary structure + relative SASA + buried flags,
-  projected onto UniProt coordinates (identity for AlphaFold, SIFTS-remapped
-  for RCSB). Computed best-effort in the worker after scoring, stored as
-  JSON, surfaced on `ScoreResult.structure`. (Contact maps NOT done — the
-  `StructureContext` contract doesn't include them; deferred.)
-  **Local dev gotcha:** the `dssp` binary is no longer in homebrew-core.
-  Install with `brew install brewsci/bio/dssp` (provides `mkdssp` 4.x at
-  `/opt/homebrew/bin/mkdssp`). Add `/opt/homebrew/bin` to PATH when running
-  the worker or the DSSP tests locally. The worker Docker image already has
-  it (Debian `dssp` → mkdssp 4.4.10). Note: `brew install dssp` pulls in a
-  Homebrew `python@3.14` — don't let it shadow the venv's `python3` on PATH.
-- ~~ClinVar annotation lookups~~ **DONE (Phase 4d):** `VariantAnnotation` on
-  the results contract, populated from the EBI Proteins variation API
-  (clinical significance aggregated from ClinVar/Ensembl/UniProt/NCI-TCGA +
-  associated diseases + SIFT/PolyPhen). Best-effort per single mutation.
-  Verified TP53 R175H → Pathogenic.
-- ~~AlphaMissense: NOT wired~~ **DONE:** no free per-variant REST API exposes
-  AlphaMissense, so it's served from the bulk dataset locally.
-  `scripts/build_alphamissense_db.py` streams the ~1.2GB
-  `AlphaMissense_aa_substitutions.tsv.gz` (sorted by uniprot_id) once into a
-  compact SQLite (`data/alphamissense.sqlite`, ~1.16GB, 20,516 proteins /
-  216M rows): one row per protein, uniprot_id → gzipped block of its
-  substitutions. `api/services/alphamissense_provider.py` reads it read-only
-  and degrades gracefully when absent (dataset is optional + gitignored).
-  Wired into AnnotationService as a `VariantPrediction`; can annotate on
-  AlphaMissense alone. Verified: TP53 R175H → pathogenic 0.9857, P72R →
-  benign 0.07. **Setup on a fresh machine:** `curl` the dataset to `data/`,
-  then `python scripts/build_alphamissense_db.py --input … --output …`.
-- Frontend (Phase 5) — **5a DONE:** Next.js 14 app (App Router) with the full
-  resolve→job→poll→results flow, a typed API client, and a canvas L×20 effect
-  heatmap (diverging scale, WT markers, hover readout, mutation highlight +
-  auto-scroll), plus the single-score + ClinVar annotation panel. Verified
-  in-browser; production build passes. **5b DONE:** Mol* 3D viewer
-  (`components/StructureViewer.tsx`, client-only + lazy-loaded) with a custom
-  color theme (`lib/impactColorTheme.ts`) painting residues by per-residue
-  impact — verified (TP53 DBD core red, tails pale). Run: `cd frontend && nvm
-  use 20 && npm run dev` (needs the API on :8000). **5c DONE:** DSSP
-  secondary-structure/buried track (`components/StructureTrack.tsx`) + a
-  module-level per-UniProt annotation cache in `annotation_client.py` (repeat
-  result lookups skip the multi-second EBI fetch). **5d DONE:** Framer Motion
-  staggered result reveal + footer. **Phase 5 (frontend) is COMPLETE.**
-  Node pinned to 20 via nvm (system node is 25 — must `nvm use 20`).
-  **Gotcha:** never run `next build` while `next dev` is running — it
-  corrupts the dev server's `.next` (missing-chunk errors, broken hydration).
-  Stop dev first, or `rm -rf .next` and restart dev after a build.
-  AlphaFold coloring maps residue→UniProt directly; RCSB-cropped structures
-  would need SIFTS-aware coloring (uses label_seq_id today — fine for
-  AlphaFold + identity-numbered PDBs like 1CRN).
-- ~~ProteinGym benchmark harness~~ **DONE (Phase 6):** `benchmark/run_benchmark.py`
-  scores ProteinGym DMS assays with ESM-2 → Spearman vs experimental fitness.
-  Curated 5-assay mean **0.447** (in line with published ESM-2 650M). Harness
-  in `benchmark/proteingym.py` (torch-free, scorer injected, unit-tested). See
-  `benchmark/README.md`.
-- ~~Score label calibration~~ **DONE (Phase 6):** `benchmark/calibrate.py`
-  calibrates the thresholds against **AlphaMissense** clinical labels (NOT raw
-  DMS fitness — different sensitivity, would mislabel human variants). Class-
-  balanced over ~15k pathogenic/benign substitutions across 5 human proteins
-  at 90% precision → `DAMAGING_LLR_THRESHOLD = -5.50`,
-  `TOLERATED_LLR_THRESHOLD = -1.33` (was -3.0/-0.5), ~31% uncertain band. Live
-  in `results_service.py`; verified TP53 R175H still `likely_damaging`.
-- Deployment (Cloud Run, GCS bucket, Neon Postgres) — **CODE IS DEPLOY-READY
-  (Phase 7).** Cloud Run readiness done + verified: API image honours the
-  injected `$PORT` (shell-form CMD; confirmed a container serves /health on a
-  custom port), CORS origins from `CORS_ORIGINS` env, the ARQ worker runs a
-  stdlib health server on `$PORT` for the startup probe, `DB_REQUIRE_SSL`
-  gives asyncpg `ssl=True` + Alembic `sslmode=require` (Neon-ready), and
-  `MATRIX_STORAGE_BACKEND=gcs` swaps both stores to GCS. `DEPLOY.md` is the
-  full runbook (Cloud Run + Neon + GCS + Vercel). `.env.production.example`
-  lists every prod var. **Not executed** — needs the owner's GCP/Neon/Vercel
-  accounts + secrets; all account steps are documented in DEPLOY.md.
-- **Scale-to-zero worker (Phase 7c/7d, 2026-07-31):** the earlier design
-  required an always-on worker (`--min-instances 1 --no-cpu-throttling`),
-  which is the *expensive* Cloud Run configuration — realistically $50–130/mo,
-  not the ~$15 first estimated. Replaced with a push transport: Cloud Tasks →
-  worker `POST /score`, scoring inside the request. Whole stack is now ~$0
-  idle and **Redis/Upstash is no longer needed in production**. The
-  cold-start cost (~60–90s on a novel protein) is hidden by
-  `scripts/seed_demo_cache.py`, which pre-scores the demo proteins straight
-  into the prod DB + GCS bucket from a laptop; cached proteins are served by
-  the API alone and never wake the worker.
+- DSSP features are computed once per protein from the full-length prediction,
+  so viewing an experimental structure shows a track describing the AlphaFold
+  model.
+- The impact colouring does not itself down-weight low-confidence regions; the
+  Confidence toggle makes that inspectable rather than solving it.
+- Substitutions only, ≤1022 residues (ESM-2 context limit). Deliberate v1 scope.
 
-## Immediate next steps (resume here)
-
-Steps 1–7 of the old resume checklist are **DONE and verified**, AND the
-full containerized stack is now proven too (schema, torch install, smoke
-test, integration test, a local HTTP round trip, AND a round trip through
-the actual `api` + `worker` Docker images — see "Current status" above).
-What remains:
-
-1. **Deploy prep (image size):** the worker image is **8.93GB** because
-   the linux torch wheel pulls in CUDA/cuDNN libs that Cloud Run's CPU
-   will never use. Before deploy, install CPU-only torch in
-   `infra/Dockerfile.worker` via
-   `pip install --index-url https://download.pytorch.org/whl/cpu torch ...`
-   — should cut the image to ~2–3GB. (API image is already a lean 543MB.)
-2. **Phase 4:** structure pipeline — PDB ID resolution (currently
-   `NotImplementedError`), AlphaFold/RCSB fetch, DSSP structural features
-   (secondary structure, RSA, contacts), AlphaMissense/ClinVar lookups.
-3. **Phase 5:** frontend (Next.js — only scaffolding exists today).
-4. **Phase 6:** ProteinGym benchmark harness + score-label calibration
-   (the `DAMAGING/TOLERATED_LLR_THRESHOLD` placeholders are still
-   uncalibrated).
-5. **Phase 7:** deploy (Cloud Run + Neon Postgres + GCS bucket).
-
-To restart the local stack for a manual HTTP round trip:
-```bash
-docker compose up -d postgres redis          # if not already up
-source .venv/bin/activate
-arq worker.main.WorkerSettings &             # loads ESM-2 warm
-uvicorn api.main:app --port 8000 &
-# then: POST /api/v1/proteins/resolve -> POST /api/v1/jobs
-#       -> GET /api/v1/jobs/{id} -> GET /api/v1/results/{hash}?mutation=...
-```
-
-## Testing reference
+## Testing
 
 ```bash
-# Fast, no network, no DB — run constantly during development
-pytest -m "not network and not integration" -v
-
-# Hits real UniProt API
-pytest -m network -v
-
-# Needs docker compose up -d postgres redis + alembic upgrade head first
-pytest -m "integration and network" -v -s
-
-# The one correctness check that matters most — run after any scorer change
-pytest worker/scorers/test_esm2_smoke.py -v -s
+pytest -m "not network and not integration"   # fast: 103 tests
+pytest -m network                             # real UniProt/EBI/RCSB
+pytest -m "integration and network"           # needs Postgres + Redis
+pytest worker/scorers/test_esm2_smoke.py -s   # the correctness check that matters
 ```
 
-Pytest markers are registered in `pyproject.toml` under `[tool.pytest.ini_options]`.
+The smoke test asserts TP53 R175H scores strongly damaging (−5.97) while the
+conservative K372R does not (−0.10). If position or token indexing in the
+scorer ever breaks, this is what catches it.
 
-## Design decisions worth remembering
-
-- **Storage backend:** currently `local` (filesystem, `./data/matrices`)
-  for dev. `GCSMatrixStore` exists and is a drop-in swap via
-  `MATRIX_STORAGE_BACKEND=gcs` + `MATRIX_STORAGE_BUCKET` env vars — no
-  code changes needed when we deploy.
-- **Billing approach:** Cloud Run has no idle cost. Cloud SQL does
-  (~$10/mo always-on). Plan is to use Neon (serverless Postgres, scales
-  to zero) instead of Cloud SQL specifically so the project costs $0
-  when not being actively demoed to recruiters/professors. Not yet
-  implemented — still on local Postgres via docker-compose.
-- **Commit history matters** — this is a portfolio piece professors and
-  recruiters may look at. Commit incrementally with meaningful messages
-  (`feat: add ESM-2 scorer`, `fix: gene search false-positive on
-  substring match`, etc.), not one giant final commit.
-- **Substitutions only in v1** — no indels, sequences capped at 1022
-  residues (`domain/scoring.py` `MAX_SEQUENCE_LENGTH`). This is a
-  deliberate scope decision, not an oversight.
-
-## Known issues to watch for
-
-- ~~The ESM-2 smoke test's hardcoded TP53 sequence was typed from memory
-  and never verified.~~ **RESOLVED (2026-07-20):** fetched real UniProt
-  P04637 FASTA and diffed — the hardcoded sequence is an **exact match**
-  (393 residues, position 175 = R, position 372 = K). The smoke test's
-  pass/fail is now trustworthy.
-- **Stray duplicate file:** `test_esm2_smoke.py` exists BOTH at the repo
-  root and at `worker/scorers/test_esm2_smoke.py` — byte-identical. The
-  root copy is a download-mishap artifact (see the note two bullets down);
-  it is NOT in `testpaths` so pytest never collects it, but it's a trap.
-  Safe to delete the root-level one; the canonical copy is under
-  `worker/scorers/`.
-- **`greenlet` dependency (FIXED):** SQLAlchemy's async extension needs
-  `greenlet`, but `pyproject.toml` declared plain `sqlalchemy>=2.0.0`, so
-  it wasn't installed and every async DB call failed with "the greenlet
-  library is required". Now declared as `sqlalchemy[asyncio]>=2.0.0`.
-- **Async-engine test-loop lifecycle (FIXED):** `db/session.py` `engine`
-  is a module-level singleton with a connection pool, but pytest-asyncio
-  gives each test its own event loop. A pooled connection from one test
-  was closed during a later test's loop → "RuntimeError: Event loop is
-  closed". Fixed with `tests/conftest.py` (autouse fixture that calls
-  `await engine.dispose()` after each test). Production is unaffected —
-  the API/worker each run one long-lived loop where pooling is correct.
-- **Dockerfile build order + packaging (FIXED):** both Dockerfiles ran
-  `pip install -e .` BEFORE copying the source, so the editable install
-  had no packages to discover and failed. Separately, `pyproject.toml`
-  had an *explicit* package list including every subdir — incompatible
-  with the split images (thin API has no `worker/`; worker has no
-  `api/routes`). Fixed by (a) reordering both Dockerfiles to copy source
-  before install, and (b) switching to `[tool.setuptools.packages.find]`
-  with `include` globs so discovery adapts to whatever source each image
-  copies. Also added `.dockerignore` (was missing — the whole `.venv`
-  was being shipped as build context).
-- **CUDA image bloat (KNOWN, not yet fixed):** worker image is 8.93GB
-  because the default linux torch wheel bundles CUDA libs unused on CPU.
-  See deploy note #1 in "Immediate next steps" for the CPU-only fix.
-- **No `.gitignore` existed (FIXED):** the repo had no `.gitignore` at
-  all, so `.env` (dev password), `.venv/`, and generated `data/` were
-  not actually being ignored despite `.env.example` claiming otherwise.
-  Added a proper one.
-- `results_service.py` classification thresholds
-  (`DAMAGING_LLR_THRESHOLD`, `TOLERATED_LLR_THRESHOLD`) are placeholder
-  values, not calibrated against ProteinGym yet. Don't present these as
-  scientifically meaningful until Phase 7 calibration is done.
-- Two file-download mishaps happened during setup where zip contents
-  landed in `~/Downloads/<name>/` instead of the repo, causing stale
-  code to silently persist. If something seems to not be taking effect
-  after an edit, check for duplicate/stale files before assuming the
-  logic is wrong.
+**Test the negative paths.** Every serious bug in this project was found off
+the happy path — malformed input, boundary positions, hostile URLs, unusual but
+legitimate formats — not by clicking the demo buttons. Check the *cost*
+consequence of a bad request, not only its status code.
