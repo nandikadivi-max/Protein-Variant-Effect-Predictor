@@ -196,14 +196,16 @@ function Discordance({
         <span className="font-medium text-ink">
           The databases and the model disagree here.
         </span>{" "}
-        ESM-2 judges how plausible a sequence looks next to evolution, so it
-        catches substitutions that destabilise a fold or land on a conserved
-        active site. Variants that leave the folded protein looking fairly
-        ordinary and cause disease some other way are its blind spot.
-        Sickle-cell haemoglobin is the textbook case: the swap puts a sticky
-        patch on the surface that makes deoxygenated haemoglobin polymerise
-        into fibres, and nothing about that looks unusual to a model asking
-        only whether the sequence is evolutionarily normal.
+        ESM-2 judges how plausible a sequence looks next to evolution, and
+        there are two well-understood ways that comes apart from human
+        disease. A variant can leave the folded protein looking perfectly
+        ordinary and do its damage another way: sickle-cell haemoglobin puts a
+        sticky patch on the surface that makes deoxygenated HbS polymerise
+        into fibres, and nothing in the sequence flags that. Or the substituted
+        residue can simply be the normal one in another species, which is what
+        happens with alpha-synuclein A53T, where the rat protein carries
+        threonine at exactly the position that causes inherited Parkinson&apos;s
+        in people.
       </p>
     );
   }

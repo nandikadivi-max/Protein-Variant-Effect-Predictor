@@ -122,6 +122,12 @@ Reviewed as a domain expert; two claims previously overreached.
   the model and the databases disagree, keyed off the labels so it holds for
   any protein. The sickle-cell chip stays on purpose: swapping it for a
   variant that scores well would be cherry-picking.
+- **Conservation is not pathogenicity.** SNCA A53T (familial Parkinson's)
+  scores **+2.07**, a positive LLR, 1st percentile, *likely tolerated*. Not a
+  bug: rat α-synuclein (P37377) carries threonine at 53 natively, so the model
+  is correct that the residue is unremarkable. It is answering a different
+  question from "does this cause human disease". Verify before "fixing" any
+  variant that looks mis-scored this way.
 - **Clinical significance can disagree with itself.** EBI returns one feature
   per *genomic* variant, so a substitution reachable by several codon changes
   carries several entries. TP53 P72R has a Benign one (rs1042522, carried by

@@ -115,8 +115,18 @@ to a model asking only whether a sequence is evolutionarily plausible.
 Transthyretin **V50M** (clinical V30M) behaves the same way for the same
 reason: amyloid formation is an aggregation phenotype, not a folding defect.
 
-The result page says so wherever the model and the databases disagree, in both
-directions.
+The second failure mode is sharper still. α-synuclein **A53T** causes inherited
+Parkinson's, and the model scores it **+2.07** — a *positive* LLR, the 1st
+percentile, "likely tolerated". It isn't a bug. Rat α-synuclein
+([P37377](https://www.uniprot.org/uniprotkb/P37377)) carries threonine at
+position 53 natively, so ESM-2 is right that the residue is evolutionarily
+unremarkable; it is simply answering a different question from "does this cause
+disease in humans". Evolutionary plausibility and human pathogenicity are not
+the same thing, and A53T is the cleanest demonstration of the gap in the whole
+tool.
+
+The result page explains this wherever the model and the databases disagree, in
+both directions.
 
 ## How it works
 
