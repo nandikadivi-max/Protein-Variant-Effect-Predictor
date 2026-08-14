@@ -36,7 +36,8 @@ optionally a mutation, and it returns:
   accessibility, projected onto UniProt coordinates.
 - **Clinical annotation** — ClinVar / Ensembl / UniProt / NCI-TCGA
   significance and associated diseases via the EBI Proteins API, plus
-  AlphaMissense when the local dataset is present.
+  AlphaMissense when the local dataset is present. Where submissions disagree
+  the disagreement is reported, not resolved by taking the worst call.
 - **A shareable link** — the URL carries the protein and mutation, so a result
   can be sent to someone rather than described.
 
@@ -93,6 +94,29 @@ TOLERATED_LLR_THRESHOLD = -1.33   # ~31% of variants land in the uncertain band
 ```
 
 See [`benchmark/README.md`](benchmark/README.md) to reproduce either run.
+
+### What the score can't see
+
+The gap between a zero-shot LLR and a clinical call isn't noise. It tracks
+disease mechanism, and it's worth understanding before trusting any number
+here.
+
+ESM-2 scores how ordinary a sequence looks against evolution. That makes it
+strong on variants which destabilise a fold or land on a conserved active
+site, and weak on variants which leave the folded protein looking
+unremarkable and cause disease some other way.
+
+Sickle-cell is the clearest example, and it's kept as a demo chip rather than
+swapped for something that scores better. HBB **E7V** comes back at LLR
+**−3.76**, the 37th percentile, well inside the uncertain band, while ClinVar
+calls it pathogenic. The substitution puts a hydrophobic patch on the surface
+which makes deoxygenated HbS polymerise into fibres. None of that is visible
+to a model asking only whether a sequence is evolutionarily plausible.
+Transthyretin **V50M** (clinical V30M) behaves the same way for the same
+reason: amyloid formation is an aggregation phenotype, not a folding defect.
+
+The result page says so wherever the model and the databases disagree, in both
+directions.
 
 ## How it works
 
@@ -171,7 +195,7 @@ before) is hidden by pre-seeding the cache — see
 **Backend** FastAPI · SQLAlchemy 2.0 async · Alembic · Pydantic
 **ML** PyTorch · Hugging Face Transformers · ESM-2 650M (`esm2_t33_650M_UR50D`)
 **Frontend** Next.js 14 (App Router) · TypeScript · Tailwind · Framer Motion · [Mol\*](https://molstar.org)
-**Bio** Biopython · DSSP · UniProt · AlphaFold DB · RCSB PDB · PDBe SIFTS · EBI Proteins API · AlphaMissense
+**Bio** Biopython · pydssp · UniProt · AlphaFold DB · RCSB PDB · PDBe SIFTS · EBI Proteins API · AlphaMissense
 **Infra** Cloud Run · Cloud Tasks · Neon Postgres · GCS · Vercel · Docker
 
 ## Repository layout
@@ -220,10 +244,11 @@ Or run the whole stack in containers with `docker compose up --build`.
 <details>
 <summary>Local gotchas</summary>
 
-- **DSSP** is no longer in homebrew-core: `brew install brewsci/bio/dssp`
-  provides `mkdssp` at `/opt/homebrew/bin`. Add it to `PATH` when running the
-  worker. (The worker image already has it.) Don't let its `python@3.14`
-  dependency shadow the venv on `PATH`.
+- **DSSP needs no binary.** Secondary structure comes from `pydssp` and
+  solvent accessibility from Biopython's Shrake-Rupley, both installed by the
+  `worker` extra. Don't install `mkdssp`: 4.x aborts unless you also fetch the
+  ~800MB wwPDB chemical component dictionary, which is exactly why it was
+  dropped — it failed silently inside the container.
 - **Node** must be 20 — `nvm use 20`.
 - Never run `next build` while `next dev` is running; it corrupts `.next`.
   Stop dev first, or `rm -rf .next` afterwards.
@@ -237,7 +262,7 @@ Or run the whole stack in containers with `docker compose up --build`.
 ## Tests
 
 ```bash
-pytest -m "not network and not integration"   # fast: 103 tests, no network or DB
+pytest -m "not network and not integration"   # fast: 106 tests, no network or DB
 pytest -m network                             # hits the real UniProt/EBI APIs
 pytest -m "integration and network"           # needs Postgres + Redis running
 pytest worker/scorers/test_esm2_smoke.py -s   # the correctness check that matters most

@@ -16,7 +16,7 @@ history and code quality matter as much as behaviour.
 
 ## Status
 
-Deployed and working. All phases complete. **103 tests** pass
+Deployed and working. All phases complete. **106 tests** pass
 (`pytest -m "not network and not integration"`), mypy and ruff clean.
 
 Deliberately deferred, with the owner's agreement:
@@ -114,6 +114,23 @@ Reviewed as a domain expert; two claims previously overreached.
   are below 50. The viewer offers a Confidence mode — **only for predicted
   models**, since the same column in an experimental structure means atomic
   mobility, the inverse reading.
+- **Zero-shot LLR misses aggregation phenotypes.** HBB E7V (sickle-cell)
+  scores −3.76, 37th percentile, *uncertain*, against ClinVar's Pathogenic.
+  TTR V50M is the same story. Both cause disease by aggregation rather than by
+  destabilising the fold, and a model scoring evolutionary plausibility cannot
+  see that. `Discordance` in `SingleScoreCard.tsx` explains the gap wherever
+  the model and the databases disagree, keyed off the labels so it holds for
+  any protein. The sickle-cell chip stays on purpose: swapping it for a
+  variant that scores well would be cherry-picking.
+- **Clinical significance can disagree with itself.** EBI returns one feature
+  per *genomic* variant, so a substitution reachable by several codon changes
+  carries several entries. TP53 P72R has a Benign one (rs1042522, carried by
+  roughly a quarter of people) and a Pathogenic somatic one. Taking the most
+  severe reported that common polymorphism as disease-causing.
+  `_pick_significance` now returns "Conflicting interpretations" when calls
+  disagree in direction; severity is the tiebreak only when they agree, so no
+  other demo variant moved. A risk factor beside a benign call is not a
+  conflict.
 - Scores are against **UniProt canonical isoform** only.
 
 ## Layout
@@ -180,7 +197,7 @@ API-only code.
 ## Testing
 
 ```bash
-pytest -m "not network and not integration"   # fast: 103 tests
+pytest -m "not network and not integration"   # fast: 106 tests
 pytest -m network                             # real UniProt/EBI/RCSB
 pytest -m "integration and network"           # needs Postgres + Redis
 pytest worker/scorers/test_esm2_smoke.py -s   # the correctness check that matters
