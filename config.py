@@ -77,6 +77,22 @@ class Settings(BaseSettings):
     # Base URL of the deployed worker service (no trailing /score).
     worker_url: str | None = None
 
+    # --- Cost guard ---
+    # How many *novel* proteins may be scored in a rolling 24 hours. Cache hits
+    # are never counted or limited, so the demo chips and anything previously
+    # scored stay instant and unlimited no matter what this is set to.
+    #
+    # This exists because scoring is the only expensive thing the system does
+    # and the API has to be public. One novel ~300-residue protein costs about
+    # six cents of worker time, so the default bounds a sustained-abuse month
+    # to roughly $30 rather than the ~$1,100 an unthrottled worker pinned at
+    # max instances would run to.
+    #
+    # Deliberately a setting rather than a constant: it can be retightened on
+    # the deployed service with `gcloud run services update --update-env-vars`,
+    # no rebuild and no redeploy of the image.
+    max_new_jobs_per_day: int = 15
+
     # --- Deployment ---
     # Comma-separated allowed CORS origins (the deployed frontend origin(s)).
     cors_origins: str = "http://localhost:3000"

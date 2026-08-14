@@ -3,7 +3,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.deps import get_job_service
-from api.services.job_service import JobService, UnknownProtein, UnsupportedModel
+from api.services.job_service import (
+    DailyLimitReached,
+    JobService,
+    UnknownProtein,
+    UnsupportedModel,
+)
 from contracts.schemas import (
     CreateJobRequest,
     CreateJobResponse,
@@ -26,6 +31,13 @@ async def create_job(
         raise HTTPException(status_code=400, detail=str(e))
     except UnknownProtein as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except DailyLimitReached as e:
+        # 429 rather than 503: the service is healthy, this caller has simply
+        # run into a deliberate quota. Retry-After points at the next whole
+        # hour, which is honest enough given the window is rolling.
+        raise HTTPException(
+            status_code=429, detail=str(e), headers={"Retry-After": "3600"}
+        )
     return CreateJobResponse(job_id=job_id, status=status, cached=cached)
 
 

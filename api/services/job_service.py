@@ -9,9 +9,9 @@ what makes the whole system tolerable on CPU.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.services.job_dispatcher import JobDispatcher
@@ -26,6 +26,15 @@ class UnknownProtein(Exception):
 
 class UnsupportedModel(Exception):
     """A model this deployment does not serve."""
+
+
+class DailyLimitReached(Exception):
+    """
+    The rolling-24h budget for scoring novel proteins is spent.
+
+    Only ever raised for work that would actually wake the worker. Cache hits
+    do not consume the budget and are not refused.
+    """
 
 
 class JobService:
@@ -92,6 +101,11 @@ class JobService:
             await self.session.commit()
             return job_id, JobStatus.DONE, True
 
+        # Only now, once we know this needs real work, does the cost guard
+        # apply. Placing it after the cache check is the whole point: a cache
+        # hit costs nothing and must never be refused.
+        await self._assert_daily_budget()
+
         # New job — persist, then enqueue.
         job_id = str(uuid.uuid4())
         job = Job(
@@ -111,6 +125,57 @@ class JobService:
             model_id=model_id,
         )
         return job_id, JobStatus.QUEUED, False
+
+    # A real scoring run is never this quick. The smallest demo protein is 46
+    # residues at roughly a second each, before a cold start adds a minute or
+    # so on top. A cache-hit row, by contrast, is written already finished
+    # inside a single transaction.
+    #
+    # The generous margin is deliberate. `created_at` comes from the database
+    # clock and `finished_at` from the API process's, so the difference on a
+    # cache hit is near zero but not exactly zero, and could even be slightly
+    # negative. Thirty seconds is far outside any plausible skew between two
+    # NTP-synced hosts while still sitting well below the shortest genuine run.
+    _MIN_REAL_JOB_SECONDS = 30
+
+    async def _assert_daily_budget(self) -> None:
+        """
+        Refuse to start new scoring once the rolling 24-hour allowance is gone.
+
+        Scoring is the only expensive thing here and the API has to be public,
+        so without this an unattended deployment has no upper bound on spend.
+
+        Counts genuine runs only. The cache-hit path above also writes a Job
+        row — that table doubles as the request log — so the two are told apart
+        by how long the row took to finish rather than by a dedicated column,
+        which would mean a migration for something this small. A run that fails
+        within the window is not counted, which is the right bias: it barely
+        cost anything.
+        """
+        limit = get_settings().max_new_jobs_per_day
+        if limit <= 0:  # 0 or negative disables the guard entirely
+            return
+
+        window_start = datetime.now(timezone.utc) - timedelta(hours=24)
+        floor = timedelta(seconds=self._MIN_REAL_JOB_SECONDS)
+        used = await self.session.scalar(
+            select(func.count())
+            .select_from(Job)
+            .where(
+                Job.created_at >= window_start,
+                or_(
+                    Job.finished_at.is_(None),
+                    Job.finished_at > Job.created_at + floor,
+                ),
+            )
+        )
+        if (used or 0) >= limit:
+            raise DailyLimitReached(
+                f"This demo scores up to {limit} new proteins a day, and "
+                "today's allowance is used up. Everything already scored is "
+                "unaffected and still instant, including the examples. New "
+                "proteins can be scored again within 24 hours."
+            )
 
     async def get_status(self, job_id: str) -> tuple[JobStatus, str | None] | None:
         result = await self.session.execute(select(Job).where(Job.job_id == job_id))

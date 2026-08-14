@@ -5,13 +5,21 @@ These cover the two ways a malformed job request used to get through, both
 of which cost real money rather than merely returning an ugly response.
 """
 
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.services.job_service import JobService, UnknownProtein, UnsupportedModel
+from api.services.job_service import (
+    DailyLimitReached,
+    JobService,
+    UnknownProtein,
+    UnsupportedModel,
+)
 from api.services.uniprot_client import _echo_safe
+from config import get_settings
+from contracts.schemas import JobStatus
 
 
 def as_session(fake: Any) -> AsyncSession:
@@ -78,6 +86,122 @@ async def test_unknown_protein_is_rejected_and_nothing_is_dispatched() -> None:
             sequence_hash="0" * 64, model_id="esm2_t33_650M_UR50D"
         )
     assert dispatcher.calls == []
+
+
+class _ScriptedSession:
+    """Protein always exists; cache state and the 24h count are configurable."""
+
+    def __init__(self, *, cached: bool, jobs_today: int) -> None:
+        self.cached = cached
+        self.jobs_today = jobs_today
+        self.added: list = []
+        self._executes = 0
+
+    async def execute(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        self._executes += 1
+        is_protein_lookup = self._executes == 1
+        cached = self.cached
+
+        class _Result:
+            @staticmethod
+            def scalar_one_or_none():
+                if is_protein_lookup:
+                    return "a" * 64  # the protein row exists
+                return object() if cached else None  # the score matrix
+
+        return _Result()
+
+    async def scalar(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        return self.jobs_today
+
+    def add(self, obj) -> None:
+        self.added.append(obj)
+
+    async def commit(self) -> None:
+        pass
+
+
+def _with_limit(monkeypatch: pytest.MonkeyPatch, limit: int) -> None:
+    model_id = get_settings().default_model_id
+    monkeypatch.setattr(
+        "api.services.job_service.get_settings",
+        lambda: SimpleNamespace(
+            default_model_id=model_id, max_new_jobs_per_day=limit
+        ),
+    )
+
+
+async def test_new_scoring_is_refused_once_the_daily_budget_is_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Scoring is the only expensive thing here and the API is public, so without
+    a ceiling an unattended deployment has no upper bound on spend.
+    """
+    _with_limit(monkeypatch, 5)
+    dispatcher = _RecordingDispatcher()
+    service = JobService(
+        session=as_session(_ScriptedSession(cached=False, jobs_today=5)),
+        dispatcher=dispatcher,
+    )
+    with pytest.raises(DailyLimitReached, match="5 new proteins a day"):
+        await service.create_or_reuse(
+            sequence_hash="a" * 64, model_id=get_settings().default_model_id
+        )
+    # The point of the guard is that the worker is never woken.
+    assert dispatcher.calls == []
+
+
+async def test_cached_proteins_are_served_even_with_the_budget_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    The guard must never touch the cache-hit path. A cache hit costs nothing,
+    and refusing one would take the demo examples down precisely when someone
+    is looking at them.
+    """
+    _with_limit(monkeypatch, 5)
+    service = JobService(
+        session=as_session(_ScriptedSession(cached=True, jobs_today=500)),
+        dispatcher=_RecordingDispatcher(),
+    )
+    _job_id, status, cached = await service.create_or_reuse(
+        sequence_hash="a" * 64, model_id=get_settings().default_model_id
+    )
+    assert cached is True
+    assert status is JobStatus.DONE
+
+
+async def test_budget_below_the_limit_dispatches_normally(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _with_limit(monkeypatch, 5)
+    dispatcher = _RecordingDispatcher()
+    service = JobService(
+        session=as_session(_ScriptedSession(cached=False, jobs_today=4)),
+        dispatcher=dispatcher,
+    )
+    _job_id, status, cached = await service.create_or_reuse(
+        sequence_hash="a" * 64, model_id=get_settings().default_model_id
+    )
+    assert (cached, status) == (False, JobStatus.QUEUED)
+    assert len(dispatcher.calls) == 1
+
+
+async def test_a_limit_of_zero_disables_the_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Escape hatch for local work and for the seeding script."""
+    _with_limit(monkeypatch, 0)
+    dispatcher = _RecordingDispatcher()
+    service = JobService(
+        session=as_session(_ScriptedSession(cached=False, jobs_today=10_000)),
+        dispatcher=dispatcher,
+    )
+    await service.create_or_reuse(
+        sequence_hash="a" * 64, model_id=get_settings().default_model_id
+    )
+    assert len(dispatcher.calls) == 1
 
 
 def test_echo_safe_strips_control_characters_and_truncates() -> None:
