@@ -16,7 +16,7 @@ history and code quality matter as much as behaviour.
 
 ## Status
 
-Deployed and working. All phases complete. **106 tests** pass
+Deployed and working. All phases complete. **110 tests** pass
 (`pytest -m "not network and not integration"`), mypy and ruff clean.
 
 Deliberately deferred, with the owner's agreement:
@@ -194,6 +194,16 @@ API-only code.
 - Worker `--max-instances 2`, `--concurrency 1`, scale-to-zero. Idle cost ≈ $0.
 - The demo proteins are pre-seeded (`scripts/seed_demo_cache.py`) so visitors
   never wake the worker.
+- **`MAX_NEW_JOBS_PER_DAY=15`** caps novel scoring in a rolling 24h; over it,
+  `POST /jobs` returns 429. Cache hits are checked *first* and are never
+  counted or refused, so the chips, the catalogue and shared links keep
+  working regardless. Set because the API must be public and scoring is the
+  only expensive thing here: unthrottled, a worker pinned at max instances
+  runs to roughly $1,100/month. Tighten on the running service with
+  `gcloud run services update pvep-api --region us-east1
+  --update-env-vars MAX_NEW_JOBS_PER_DAY=N` — no rebuild. `0` disables it.
+  The seed script bypasses it entirely (it runs the worker path directly
+  against the DB, never through the API).
 
 ## Known limitations
 
@@ -207,7 +217,7 @@ API-only code.
 ## Testing
 
 ```bash
-pytest -m "not network and not integration"   # fast: 106 tests
+pytest -m "not network and not integration"   # fast: 110 tests
 pytest -m network                             # real UniProt/EBI/RCSB
 pytest -m "integration and network"           # needs Postgres + Redis
 pytest worker/scorers/test_esm2_smoke.py -s   # the correctness check that matters

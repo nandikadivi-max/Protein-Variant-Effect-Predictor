@@ -274,7 +274,7 @@ Or run the whole stack in containers with `docker compose up --build`.
 ## Tests
 
 ```bash
-pytest -m "not network and not integration"   # fast: 106 tests, no network or DB
+pytest -m "not network and not integration"   # fast: 110 tests, no network or DB
 pytest -m network                             # hits the real UniProt/EBI APIs
 pytest -m "integration and network"           # needs Postgres + Redis running
 pytest worker/scorers/test_esm2_smoke.py -s   # the correctness check that matters most
@@ -290,6 +290,14 @@ catches it.
 The deployed stack costs approximately **$0/month at idle** — everything scales
 to zero, including the ESM-2 worker. [`DEPLOY.md`](DEPLOY.md) is the full
 runbook (Cloud Run + Cloud Tasks + Neon + GCS + Vercel).
+
+Scoring is the only expensive operation and the API is necessarily public, so
+`MAX_NEW_JOBS_PER_DAY` (default 15) caps how many *novel* proteins will be
+scored in a rolling 24 hours; past that, job creation returns 429. Cache hits
+are checked first and are never counted or refused, so the examples, the
+already-scored catalogue and any shared link keep working whatever the budget
+is doing. Without a ceiling, a public endpoint that can spend minutes of
+8-vCPU time per request has no upper bound on cost.
 
 ## Scope
 
