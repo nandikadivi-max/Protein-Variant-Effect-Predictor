@@ -61,8 +61,13 @@ export interface VariantPrediction {
 export interface VariantAnnotation {
   mutation: string;
   clinical_significance: string | null;
-  /** Every distinct call the databases returned, most severe first. */
-  significances: string[];
+  /**
+   * Every distinct call the databases returned, most severe first.
+   *
+   * Optional because Vercel and Cloud Run deploy independently: the frontend
+   * can be live against an API that predates this field.
+   */
+  significances?: string[];
   sources: string[];
   diseases: string[];
   predictions: VariantPrediction[];

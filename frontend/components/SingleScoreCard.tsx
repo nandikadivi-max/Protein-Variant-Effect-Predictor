@@ -99,11 +99,11 @@ export function SingleScoreCard({ single, annotation }: Props) {
               </span>
             )}
           </div>
-          {annotation.significances.length > 1 && (
+          {(annotation.significances ?? []).length > 1 && (
             <p className="mt-2 max-w-lg text-xs text-muted">
               Submitted as{" "}
               <span className="text-ink">
-                {annotation.significances.join(", ")}
+                {(annotation.significances ?? []).join(", ")}
               </span>{" "}
               by different sources. Usually this means more than one DNA change
               produces the same amino-acid swap, and they were not all
