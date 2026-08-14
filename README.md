@@ -274,7 +274,7 @@ Or run the whole stack in containers with `docker compose up --build`.
 ## Tests
 
 ```bash
-pytest -m "not network and not integration"   # fast: 110 tests, no network or DB
+pytest -m "not network and not integration"   # fast: 112 tests, no network or DB
 pytest -m network                             # hits the real UniProt/EBI APIs
 pytest -m "integration and network"           # needs Postgres + Redis running
 pytest worker/scorers/test_esm2_smoke.py -s   # the correctness check that matters most

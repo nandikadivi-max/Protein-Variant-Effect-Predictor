@@ -16,7 +16,7 @@ history and code quality matter as much as behaviour.
 
 ## Status
 
-Deployed and working. All phases complete. **110 tests** pass
+Deployed and working. All phases complete. **112 tests** pass
 (`pytest -m "not network and not integration"`), mypy and ruff clean.
 
 Deliberately deferred, with the owner's agreement:
@@ -204,6 +204,17 @@ API-only code.
   --update-env-vars MAX_NEW_JOBS_PER_DAY=N` — no rebuild. `0` disables it.
   The seed script bypasses it entirely (it runs the worker path directly
   against the DB, never through the API).
+  **`0` means "score nothing new", not "unlimited"** — it is the emergency
+  brake, and the intuitive value must not do the opposite of what someone
+  reaching for it in a hurry intends. `-1` disables the guard.
+- **Budget kill-switch** (`infra/killswitch/`): a $15/month budget publishes to
+  Pub/Sub, and a Cloud Function acts on it. At ≥50% it sets
+  `MAX_NEW_JOBS_PER_DAY=0`, which stops worker spend while leaving the site
+  fully up; at ≥100% it detaches billing and everything stops. Both actions
+  check current state first, because notifications repeat and would otherwise
+  pile up a Cloud Run revision each time. Recovery and the non-obvious IAM
+  (Cloud Run needs `artifactregistry.reader` to replace a service — `run.admin`
+  alone 403s) are in that directory's README.
 
 ## Known limitations
 
@@ -217,7 +228,7 @@ API-only code.
 ## Testing
 
 ```bash
-pytest -m "not network and not integration"   # fast: 110 tests
+pytest -m "not network and not integration"   # fast: 112 tests
 pytest -m network                             # real UniProt/EBI/RCSB
 pytest -m "integration and network"           # needs Postgres + Redis
 pytest worker/scorers/test_esm2_smoke.py -s   # the correctness check that matters
