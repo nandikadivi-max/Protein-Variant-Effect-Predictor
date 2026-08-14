@@ -91,6 +91,15 @@ class Settings(BaseSettings):
     # Deliberately a setting rather than a constant: it can be retightened on
     # the deployed service with `gcloud run services update --update-env-vars`,
     # no rebuild and no redeploy of the image.
+    #
+    #   15  the default
+    #    0  score nothing new -- the emergency brake. The site stays fully up
+    #       on everything already cached, and worker spend goes to zero.
+    #   -1  no ceiling at all (local development)
+    #
+    # Zero means "none", not "unlimited". Anyone reaching for this setting in a
+    # hurry is trying to stop spending, and the intuitive value must not do the
+    # opposite of what they meant.
     max_new_jobs_per_day: int = 15
 
     # --- Deployment ---

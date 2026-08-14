@@ -188,11 +188,49 @@ async def test_budget_below_the_limit_dispatches_normally(
     assert len(dispatcher.calls) == 1
 
 
-async def test_a_limit_of_zero_disables_the_guard(
+async def test_zero_is_the_emergency_brake_not_unlimited(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Escape hatch for local work and for the seeding script."""
+    """
+    Zero must mean "score nothing new", never "no ceiling".
+
+    Anyone setting this in a hurry is trying to stop spending. If the
+    intuitive value quietly removed the cap instead, the one lever meant to
+    halt costs would be the lever that uncaps them.
+    """
     _with_limit(monkeypatch, 0)
+    dispatcher = _RecordingDispatcher()
+    service = JobService(
+        session=as_session(_ScriptedSession(cached=False, jobs_today=0)),
+        dispatcher=dispatcher,
+    )
+    with pytest.raises(DailyLimitReached, match="aren't being scored"):
+        await service.create_or_reuse(
+            sequence_hash="a" * 64, model_id=get_settings().default_model_id
+        )
+    assert dispatcher.calls == []
+
+
+async def test_zero_still_serves_everything_already_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The brake must stop spending without taking the site down."""
+    _with_limit(monkeypatch, 0)
+    service = JobService(
+        session=as_session(_ScriptedSession(cached=True, jobs_today=0)),
+        dispatcher=_RecordingDispatcher(),
+    )
+    _job_id, status, cached = await service.create_or_reuse(
+        sequence_hash="a" * 64, model_id=get_settings().default_model_id
+    )
+    assert (cached, status) == (True, JobStatus.DONE)
+
+
+async def test_a_negative_limit_disables_the_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Escape hatch for local development."""
+    _with_limit(monkeypatch, -1)
     dispatcher = _RecordingDispatcher()
     service = JobService(
         session=as_session(_ScriptedSession(cached=False, jobs_today=10_000)),

@@ -153,7 +153,11 @@ class JobService:
         cost anything.
         """
         limit = get_settings().max_new_jobs_per_day
-        if limit <= 0:  # 0 or negative disables the guard entirely
+        # Negative disables the guard. Zero deliberately does NOT: it means
+        # "score nothing new", which is the emergency brake. Reaching for 0 to
+        # stop spending and getting unlimited scoring instead is exactly the
+        # wrong way round for a setting whose whole purpose is a cost ceiling.
+        if limit < 0:
             return
 
         window_start = datetime.now(timezone.utc) - timedelta(hours=24)
@@ -170,6 +174,12 @@ class JobService:
             )
         )
         if (used or 0) >= limit:
+            if limit == 0:
+                raise DailyLimitReached(
+                    "New proteins aren't being scored at the moment. "
+                    "Everything already scored still works and is instant, so "
+                    "the examples and the catalogue below them are all live."
+                )
             raise DailyLimitReached(
                 f"This demo scores up to {limit} new proteins a day, and "
                 "today's allowance is used up. Everything already scored is "
