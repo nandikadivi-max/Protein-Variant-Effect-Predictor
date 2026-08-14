@@ -164,8 +164,12 @@ API-only code.
 
 ## Environment and gotchas
 
-- Python 3.11.9 via pyenv, venv at `.venv/`. Node 20 via nvm (**system node is
-  25 — `nvm use 20`**).
+- Python 3.11.9 via pyenv, venv at `.venv/`. **Node 24** via nvm (system node
+  is 25, so `nvm use` picks up `frontend/.nvmrc`). Moved off 20 on 2026-08-14:
+  Vercel fails builds on Node 20 from 2026-10-01. `engines` in
+  `frontend/package.json` is the binding setting — it overrides the Vercel
+  dashboard, so the dashboard's bulk-upgrade button silently skips this
+  project.
 - **Never run `next build` while `next dev` is running** — it corrupts `.next`.
   Stop dev, `rm -rf .next`, rebuild.
 - **Port 5432 is blocked on the owner's WiFi.** Alembic and any direct DB work

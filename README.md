@@ -230,7 +230,7 @@ worker can persist results without importing API-only code.
 
 ## Running locally
 
-Requires Python 3.11, Node 20, and Docker.
+Requires Python 3.11, Node 24, and Docker.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -259,7 +259,9 @@ Or run the whole stack in containers with `docker compose up --build`.
   `worker` extra. Don't install `mkdssp`: 4.x aborts unless you also fetch the
   ~800MB wwPDB chemical component dictionary, which is exactly why it was
   dropped — it failed silently inside the container.
-- **Node** must be 20 — `nvm use 20`.
+- **Node** must be 24 — `nvm use` reads `frontend/.nvmrc`. The `engines` field
+  in `frontend/package.json` is what Vercel actually honours; it overrides the
+  dashboard setting.
 - Never run `next build` while `next dev` is running; it corrupts `.next`.
   Stop dev first, or `rm -rf .next` afterwards.
 - **AlphaMissense** is optional. The app degrades gracefully without it. To

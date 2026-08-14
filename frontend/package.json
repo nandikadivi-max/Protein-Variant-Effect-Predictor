@@ -21,7 +21,7 @@
     "typescript": "^5.6.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
-    "@types/node": "^20.16.0",
+    "@types/node": "^24.0.0",
     "tailwindcss": "^3.4.0",
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",
@@ -29,6 +29,6 @@
     "eslint-config-next": "^14.2.0"
   },
   "engines": {
-    "node": ">=20 <21"
+    "node": "24.x"
   }
 }
